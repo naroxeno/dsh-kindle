@@ -1,20 +1,21 @@
-/**
- * A deliberately small Markdown renderer for the Kindle client.
- *
- * The device runs WebKit 534 with no `fetch`, no `Promise`, and no document
- * fragments worth trusting, so every byte of markup is produced here on the
- * host. Supported: fenced code, headings, lists, blockquotes, rules, tables,
- * paragraphs with inline code / emphasis / links / math.
- */
-// Same generation as the caller: see the note in ui.js (hot reload stamp).
 const STAMP = new URL(import.meta.url).search
 const { escapeHtml, texToSvg } = await import('./math.js' + STAMP)
 
-export function renderMarkdown(src, opts = {}) {
+export interface MarkdownOptions {
+  fontPx?: number
+}
+
+interface Piece {
+  kind: 'text' | 'code' | 'math'
+  value: string
+  display?: boolean
+}
+
+export function renderMarkdown(src: string, opts: MarkdownOptions = {}): string {
   const fontPx = opts.fontPx || 30
   const text = String(src || '').replace(/\r\n?/g, '\n')
   const lines = text.split('\n')
-  const blocks = []
+  const blocks: string[] = []
   let i = 0
 
   while (i < lines.length) {
@@ -22,7 +23,7 @@ export function renderMarkdown(src, opts = {}) {
 
     const fence = /^\s{0,3}```\s*([\w+-]*)\s*$/.exec(line)
     if (fence) {
-      const body = []
+      const body: string[] = []
       i += 1
       while (i < lines.length && !/^\s{0,3}```\s*$/.test(lines[i])) {
         body.push(lines[i])
@@ -34,7 +35,7 @@ export function renderMarkdown(src, opts = {}) {
     }
 
     if (/^\s{0,3}\$\$\s*$/.test(line)) {
-      const body = []
+      const body: string[] = []
       i += 1
       while (i < lines.length && !/^\s{0,3}\$\$\s*$/.test(lines[i])) {
         body.push(lines[i])
@@ -65,7 +66,7 @@ export function renderMarkdown(src, opts = {}) {
     }
 
     if (/^\s{0,3}>/.test(line)) {
-      const quoted = []
+      const quoted: string[] = []
       while (i < lines.length && /^\s{0,3}>/.test(lines[i])) {
         quoted.push(lines[i].replace(/^\s{0,3}>\s?/, ''))
         i += 1
@@ -75,7 +76,7 @@ export function renderMarkdown(src, opts = {}) {
     }
 
     if (isTableStart(lines, i)) {
-      const rows = []
+      const rows: string[][] = []
       i += 2
       while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) {
         rows.push(splitRow(lines[i]))
@@ -87,13 +88,17 @@ export function renderMarkdown(src, opts = {}) {
 
     const bullet = /^\s{0,3}([-*+])\s+(.*)$/.exec(line)
     if (bullet) {
-      const items = []
+      const items: string[] = []
       while (i < lines.length) {
         const m = /^\s{0,3}([-*+])\s+(.*)$/.exec(lines[i])
         if (!m) break
         let item = m[2]
         i += 1
-        while (i < lines.length && /^\s{2,}\S/.test(lines[i]) && !/^\s{0,3}([-*+]|\d+[.)])\s+/.test(lines[i])) {
+        while (
+          i < lines.length &&
+          /^\s{2,}\S/.test(lines[i]) &&
+          !/^\s{0,3}([-*+]|\d+[.)])\s+/.test(lines[i])
+        ) {
           item += ' ' + lines[i].trim()
           i += 1
         }
@@ -105,7 +110,7 @@ export function renderMarkdown(src, opts = {}) {
 
     const ordered = /^\s{0,3}\d+[.)]\s+(.*)$/.exec(line)
     if (ordered) {
-      const items = []
+      const items: string[] = []
       while (i < lines.length) {
         const m = /^\s{0,3}\d+[.)]\s+(.*)$/.exec(lines[i])
         if (!m) break
@@ -116,7 +121,7 @@ export function renderMarkdown(src, opts = {}) {
       continue
     }
 
-    const para = []
+    const para: string[] = []
     while (i < lines.length && !/^\s*$/.test(lines[i]) && !startsBlock(lines, i)) {
       para.push(lines[i])
       i += 1
@@ -131,7 +136,7 @@ export function renderMarkdown(src, opts = {}) {
   return blocks.join('\n')
 }
 
-function startsBlock(lines, i) {
+function startsBlock(lines: string[], i: number): boolean {
   const line = lines[i]
   return (
     /^\s{0,3}```/.test(line) ||
@@ -145,13 +150,13 @@ function startsBlock(lines, i) {
   )
 }
 
-function isTableStart(lines, i) {
+function isTableStart(lines: string[], i: number): boolean {
   if (!/^\s*\|.*\|\s*$/.test(lines[i] || '')) return false
   const next = lines[i + 1] || ''
   return /^\s*\|[\s:|-]+\|\s*$/.test(next) && next.indexOf('-') !== -1
 }
 
-function splitRow(line) {
+function splitRow(line: string): string[] {
   return line
     .trim()
     .replace(/^\||\|$/g, '')
@@ -159,7 +164,7 @@ function splitRow(line) {
     .map((cell) => cell.trim())
 }
 
-function renderTable(rows, fontPx) {
+function renderTable(rows: string[][], fontPx: number): string {
   if (rows.length === 0) return ''
   const body = rows
     .map((cells) => '<tr>' + cells.map((c) => `<td>${inline(c, fontPx)}</td>`).join('') + '</tr>')
@@ -167,16 +172,12 @@ function renderTable(rows, fontPx) {
   return `<table>${body}</table>`
 }
 
-function displayMath(tex, fontPx) {
+function displayMath(tex: string, fontPx: number): string {
   return `<div class="mathblock">${texToSvg(tex, { display: true, fontPx })}</div>`
 }
 
-/**
- * Inline formatting. Math, code spans, emphasis, and links are all resolved
- * here so the device only ever sees final markup.
- */
-export function inline(text, fontPx = 30) {
-  const pieces = []
+export function inline(text: string, fontPx = 30): string {
+  const pieces: Piece[] = []
   let i = 0
   let buffer = ''
 
@@ -241,7 +242,7 @@ export function inline(text, fontPx = 30) {
     .join('')
 }
 
-function findDelimiter(text, from, delim) {
+function findDelimiter(text: string, from: number, delim: string): number {
   let i = from
   while (i < text.length) {
     if (text.startsWith(delim, i) && text[i - 1] !== '\\') return i
@@ -250,7 +251,7 @@ function findDelimiter(text, from, delim) {
   return -1
 }
 
-function emphasis(escaped) {
+function emphasis(escaped: string): string {
   let out = escaped
   out = out.replace(/\[([^\]]{1,200})\]\(([^)\s]{1,500})\)/g, (m, label, href) => {
     return `<a href="${escapeAttribute(href)}">${label}</a>`
@@ -264,6 +265,6 @@ function emphasis(escaped) {
   return out
 }
 
-function escapeAttribute(value) {
+function escapeAttribute(value: string): string {
   return escapeHtml(value).replace(/'/g, '&#39;')
 }

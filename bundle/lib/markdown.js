@@ -1,12 +1,3 @@
-/**
- * A deliberately small Markdown renderer for the Kindle client.
- *
- * The device runs WebKit 534 with no `fetch`, no `Promise`, and no document
- * fragments worth trusting, so every byte of markup is produced here on the
- * host. Supported: fenced code, headings, lists, blockquotes, rules, tables,
- * paragraphs with inline code / emphasis / links / math.
- */
-// Same generation as the caller: see the note in ui.js (hot reload stamp).
 const STAMP = new URL(import.meta.url).search;
 const { escapeHtml, texToSvg } = await import('./math.js' + STAMP);
 export function renderMarkdown(src, opts = {}) {
@@ -84,7 +75,9 @@ export function renderMarkdown(src, opts = {}) {
                     break;
                 let item = m[2];
                 i += 1;
-                while (i < lines.length && /^\s{2,}\S/.test(lines[i]) && !/^\s{0,3}([-*+]|\d+[.)])\s+/.test(lines[i])) {
+                while (i < lines.length &&
+                    /^\s{2,}\S/.test(lines[i]) &&
+                    !/^\s{0,3}([-*+]|\d+[.)])\s+/.test(lines[i])) {
                     item += ' ' + lines[i].trim();
                     i += 1;
                 }
@@ -154,10 +147,6 @@ function renderTable(rows, fontPx) {
 function displayMath(tex, fontPx) {
     return `<div class="mathblock">${texToSvg(tex, { display: true, fontPx })}</div>`;
 }
-/**
- * Inline formatting. Math, code spans, emphasis, and links are all resolved
- * here so the device only ever sees final markup.
- */
 export function inline(text, fontPx = 30) {
     const pieces = [];
     let i = 0;

@@ -1,14 +1,3 @@
-/**
- * Math for the Kindle client.
- *
- * Everything is rendered on the host: TeX goes in, a self-contained inline
- * <svg> comes out with pixel geometry (the device UA is WebKit 534, which
- * handles SVG but sizes `ex` badly, so no `ex` survives this module).
- *
- * AsciiMath support: the Kindle composer is typed on a five-way controller, so
- * `$...$` segments are treated as AsciiMath and converted to TeX *before*
- * display and *before* the prompt is sent to the model.
- */
 import { mathjax } from 'mathjax-full/js/mathjax.js'
 import { TeX } from 'mathjax-full/js/input/tex.js'
 import { AllPackages } from 'mathjax-full/js/input/tex/AllPackages.js'
@@ -21,24 +10,28 @@ import { createRequire } from 'node:module'
 
 const require = createRequire(import.meta.url)
 
-/** TeX packages kept deliberately small: startup cost on the host, not the device. */
 const TEX_PACKAGES = AllPackages
 
-const SHARED = Symbol.for('dsh-kindle.math')
-const shared = globalThis[SHARED] || (globalThis[SHARED] = {
-  doc: null,
-  adaptor: null,
-  rev: '',
-  cache: new Map(),
-  amToTex: null,
-})
-/**
- * A MathJax document costs hundreds of milliseconds to build, and the ESM
- * registry never unloads a ?gen=N URL, so each hot reload would otherwise leak
- * another engine and a fresh (empty, then cold) SVG cache. Both are shared
- * across generations instead. The cache is stamped with a hash of this file:
- * editing the renderer drops SVGs produced by the previous copy of the code.
- */
+interface SharedState {
+  doc: ReturnType<typeof mathjax.document> | null
+  adaptor: ReturnType<typeof liteAdaptor> | null
+  rev: string
+  cache: Map<string, string>
+  amToTex: ((source: string) => string) | null
+}
+
+const SHARED: unique symbol = Symbol.for('dsh-kindle.math')
+const globals = globalThis as typeof globalThis & { [SHARED]: SharedState | undefined }
+const shared: SharedState =
+  globals[SHARED] ||
+  (globals[SHARED] = {
+    doc: null,
+    adaptor: null,
+    rev: '',
+    cache: new Map(),
+    amToTex: null,
+  })
+
 const REV = createHash('sha256')
   .update(readFileSync(new URL('./math.js', import.meta.url)))
   .digest('hex')
@@ -50,7 +43,9 @@ if (shared.rev !== REV) {
 const cache = shared.cache
 const CACHE_LIMIT = 3000
 
-function engine() {
+type Engine = { doc: ReturnType<typeof mathjax.document>; adaptor: ReturnType<typeof liteAdaptor> }
+
+function engine(): Engine {
   if (shared.doc) return { doc: shared.doc, adaptor: shared.adaptor }
   shared.adaptor = liteAdaptor()
   RegisterHTMLHandler(shared.adaptor)
@@ -60,26 +55,15 @@ function engine() {
   return { doc: shared.doc, adaptor: shared.adaptor }
 }
 
-/**
- * MathJax drops `\tag{..}` when only the SVG node is kept, so fold the tag
- * into the formula body: `... \qquad (1)`.
- * @param {string} tex
- */
-function flattenTags(tex) {
+function flattenTags(tex: string): string {
   return tex
     .replace(/\\tag\*\s*\{([^{}]*)\}/g, (m, body) => '\\qquad\\text{' + body + '}')
     .replace(/\\tag\s*\{([^{}]*)\}/g, (m, body) => '\\qquad\\text{(' + body + ')}')
 }
 
-/** 1 TeX `em` is 1000 internal MathJax units. */
 const UNITS_PER_EM = 1000
 
-/**
- * Rewrite MathJax's `ex`-based box geometry to pixels.
- * @param {string} svg raw MathJax SVG markup
- * @param {number} fontPx the CSS font size the formula is displayed at
- */
-function toPixels(svg, fontPx) {
+function toPixels(svg: string, fontPx: number): string {
   const box = /viewBox="(-?[\d.]+) (-?[\d.]+) ([\d.]+) ([\d.]+)"/.exec(svg)
   if (!box) return svg
   const top = Number(box[2])
@@ -87,7 +71,6 @@ function toPixels(svg, fontPx) {
   const height = Number(box[4])
   const pxW = (width * fontPx) / UNITS_PER_EM
   const pxH = (height * fontPx) / UNITS_PER_EM
-  /** Distance from the baseline to the bottom of the box, in px. */
   const depth = ((height + top) * fontPx) / UNITS_PER_EM
   let out = svg
     .replace(/\swidth="[^"]*"/, ` width="${pxW.toFixed(1)}px"`)
@@ -96,19 +79,18 @@ function toPixels(svg, fontPx) {
   return out
 }
 
-/**
- * Render one TeX expression to inline SVG markup.
- * @param {string} tex
- * @param {{display?: boolean, fontPx?: number}} [opts]
- * @returns {string} SVG markup, or escaped source text when TeX fails
- */
-export function texToSvg(tex, opts = {}) {
+export interface TexToSvgOptions {
+  display?: boolean
+  fontPx?: number
+}
+
+export function texToSvg(tex: string, opts: TexToSvgOptions = {}): string {
   const display = opts.display === true
   const fontPx = opts.fontPx || 30
   const key = `${display ? 'D' : 'I'}|${fontPx}|${tex}`
   const hit = cache.get(key)
   if (hit !== undefined) return hit
-  let out
+  let out: string
   try {
     const { doc: document, adaptor: a } = engine()
     const source = flattenTags(tex)
@@ -130,7 +112,7 @@ export function texToSvg(tex, opts = {}) {
   return out
 }
 
-function amToTex(source) {
+function amToTex(source: string): string {
   if (!shared.amToTex) {
     const mod = require('asciimath-to-latex')
     shared.amToTex = mod.default || mod
@@ -138,30 +120,17 @@ function amToTex(source) {
   return shared.amToTex(source)
 }
 
-/**
- * Convert one AsciiMath segment to TeX. Unparseable input is passed through
- * unchanged (the user may already have typed LaTeX).
- * @param {string} source
- */
-export function asciiToTex(source) {
+export function asciiToTex(source: string): string {
   const trimmed = source.trim()
   if (!trimmed) return source
   try {
     const tex = amToTex(trimmed)
     if (typeof tex === 'string' && tex.trim()) return tex
-  } catch {
-    /* fall through */
-  }
+  } catch {}
   return source
 }
 
-/**
- * Rewrite `$...$` / `$$...$$` AsciiMath segments inside a prompt to TeX.
- * A segment is converted only when the conversion succeeds, so hand-written
- * LaTeX inside dollar signs survives untouched.
- * @param {string} text
- */
-export function convertPromptMath(text) {
+export function convertPromptMath(text: string): string {
   return rewriteMath(text, (source) => {
     const tex = asciiToTex(source)
     if (tex === source) return null
@@ -169,13 +138,10 @@ export function convertPromptMath(text) {
   })
 }
 
-/**
- * Walk `$...$` / `$$...$$` segments.
- * @param {string} text
- * @param {(source: string, display: boolean) => string | null} onMath
- *   return replacement TeX, or null to keep the original source
- */
-export function rewriteMath(text, onMath) {
+export function rewriteMath(
+  text: string,
+  onMath: (source: string, display: boolean) => string | null,
+): string {
   let out = ''
   let i = 0
   while (i < text.length) {
@@ -194,7 +160,7 @@ export function rewriteMath(text, onMath) {
         break
       }
       const source = text.slice(i + open, close)
-      if (!source.trim() || source.indexOf('\n') !== -1 && !display) {
+      if (!source.trim() || (source.indexOf('\n') !== -1 && !display)) {
         out += text.slice(i, close + open)
         i = close + open
         continue
@@ -211,7 +177,7 @@ export function rewriteMath(text, onMath) {
   return out
 }
 
-function findClose(text, from, delim) {
+function findClose(text: string, from: number, delim: string): number {
   let i = from
   while (i < text.length) {
     if (text.startsWith(delim, i) && text[i - 1] !== '\\') return i
@@ -220,7 +186,7 @@ function findClose(text, from, delim) {
   return -1
 }
 
-export function escapeHtml(s) {
+export function escapeHtml(s: unknown): string {
   return String(s)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')

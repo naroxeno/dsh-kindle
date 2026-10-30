@@ -1,33 +1,81 @@
-/**
- * Thin adapter over `ctx.sessionController` for the Kindle client.
- *
- * The client is stateless: every page render reconstructs the transcript from
- * the durable Session log (`inspect`, which never activates an Agent) and the
- * list (`list`, for titles and run state).
- */
 import { randomUUID } from 'node:crypto'
 
-const SURFACE_TYPES = new Set(['system/message', 'user/message', 'assistant/message', 'tool/result'])
+import type {
+  KindleContext,
+  KindleServices,
+  LlmLike,
+  ModelCatalog,
+  ModelChoice,
+  ModelInfo,
+  ReasoningEffort,
+  SessionControllerLike,
+  SessionEvent,
+  SessionListItem,
+  SessionMessage,
+  WorkspaceControllerLike,
+  WorkspaceRegistryLike,
+} from './host.js'
 
-/**
- * Every host call needs a live AbortSignal: the controller implementation
- * calls `signal.throwIfAborted()`, so `undefined` turns into a 500.
- */
-function signalFor(ms) {
+export interface SessionListEntry {
+  sessionId: string
+  title: string
+  updatedAt: number
+  running: boolean
+  blank: boolean
+}
+
+export interface SessionState {
+  running: boolean
+  updatedAt: number
+  title: string
+}
+
+export interface TranscriptMessage {
+  kind: 'user' | 'assistant' | 'tool'
+  seq: number
+  text: string
+  interrupted?: boolean
+  name?: string
+  error?: boolean
+}
+
+export interface Transcript {
+  messages: TranscriptMessage[]
+  rewriteFloor: number
+  running: boolean
+  updatedAt: number
+  title: string
+}
+
+interface ToolCall {
+  name: string
+  args: string
+}
+
+interface HostServices {
+  sessionController: SessionControllerLike | null
+  workspaceController: WorkspaceControllerLike | null
+  workspaceRegistry: WorkspaceRegistryLike | null
+  llm: LlmLike | null
+  [key: string]: unknown
+}
+
+const SURFACE_TYPES = new Set<string>([
+  'system/message',
+  'user/message',
+  'assistant/message',
+  'tool/result',
+])
+
+function signalFor(ms: number): AbortSignal {
   return AbortSignal.timeout(ms)
 }
 
-/**
- * Sessions that belong to this UI: everything whose cwd is the Kindle
- * workspace.
- */
-export async function listSessions(ctx, cwd) {
+export async function listSessions(ctx: KindleContext, cwd?: string): Promise<SessionListEntry[]> {
   const value = await sessions().list({}, signalFor(15000))
   const items = Array.isArray(value?.items) ? value.items : []
   const archived = archivedSet(ctx)
   return items
-    // Subagent Sessions are internal work; a **forked** Session keeps its
-    // parentSessionId but is a real, user-visible conversation.
     .filter((item) => item.origin !== 'subagent')
     .filter((item) => !archived || !archived.has(item.sessionId))
     .filter((item) => !cwd || item.cwd === cwd)
@@ -41,57 +89,54 @@ export async function listSessions(ctx, cwd) {
     .sort((a, b) => b.updatedAt - a.updatedAt)
 }
 
-function titleOf(item) {
+function titleOf(item?: SessionListItem): string {
   const values = item?.projections?.values
   const title = values && typeof values.title === 'string' ? values.title.trim() : ''
   return title
 }
 
-export async function createSession(ctx, cwd) {
+export async function createSession(ctx: KindleContext, cwd?: string): Promise<string> {
   const value = await sessions().create(cwd ? { cwd } : {})
   if (!value || !value.sessionId) throw new Error('create() returned no sessionId')
   return String(value.sessionId)
 }
 
-/**
- * Send one prompt. `text` already carries TeX where the user typed formulas.
- */
-export async function sendPrompt(ctx, sessionId, text) {
-  await sessions().prompt({
-    requestId: randomUUID(),
-    sessionId,
-    mode: 'queue',
-    content: [{ type: 'text', text }],
-  }, signalFor(30000))
+export async function sendPrompt(
+  ctx: KindleContext,
+  sessionId: string,
+  text: string,
+): Promise<void> {
+  await sessions().prompt(
+    {
+      requestId: randomUUID(),
+      sessionId,
+      mode: 'queue',
+      content: [{ type: 'text', text }],
+    },
+    signalFor(30000),
+  )
 }
 
-/**
- * Sessions archived from the Kindle list. The archive set lives in the Host's
- * workspace registry, so a session hidden from the Web GUI stays hidden here
- * (and vice versa) without duplicating any state.
- */
-/** Ids archived from this process, in case the registry is not readable. */
-const archivedLocally = new Set()
+const archivedLocally = new Set<string>()
 
-/**
- * Host services this module may call. `sessionController` is a hard dependency
- * of the plugin; the two workspace services are resolved in their own inject
- * scope, so a profile without the workspace extension still gets a usable
- * Kindle client (minus archiving).
- */
-const host = { sessionController: null, workspaceController: null, workspaceRegistry: null, llm: null }
-
-/** Attach or detach one host service. */
-export function setHost(partial) {
-  for (const key of Object.keys(partial)) host[key] = partial[key] || null
+const host: HostServices = {
+  sessionController: null,
+  workspaceController: null,
+  workspaceRegistry: null,
+  llm: null,
 }
 
-function sessions() {
+export function setHost(partial: Partial<KindleServices>) {
+  const store: Record<string, unknown> = host
+  for (const key of Object.keys(partial)) store[key] = partial[key] || null
+}
+
+function sessions(): SessionControllerLike {
   if (!host.sessionController) throw new Error('sessionController is not available yet')
   return host.sessionController
 }
 
-function archivedSet(ctx) {
+function archivedSet(ctx: KindleContext): Set<string> {
   const merged = new Set(archivedLocally)
   try {
     const registry = host.workspaceRegistry
@@ -99,25 +144,30 @@ function archivedSet(ctx) {
     if (set && typeof set[Symbol.iterator] === 'function') {
       for (const id of set) merged.add(id)
     }
-  } catch (error) {
-    // Registry absent: fall back to what this process archived.
-  }
+  } catch (error) {}
   return merged
 }
 
-export async function renameSession(ctx, sessionId, title) {
+export async function renameSession(
+  ctx: KindleContext,
+  sessionId: string,
+  title: string,
+): Promise<unknown> {
   return sessions().rename({ sessionId, title: String(title || '') })
 }
 
-/** Fork at the latest completed turn; returns the new Session id. */
-export async function forkSession(ctx, sessionId) {
+export async function forkSession(ctx: KindleContext, sessionId: string): Promise<string> {
   const value = await sessions().fork({ sessionId })
   if (!value || !value.sessionId) throw new Error('fork() returned no sessionId')
   return String(value.sessionId)
 }
 
-/** Give a fork a distinguishable title; best effort, the caller ignores failures. */
-export async function labelFork(ctx, sourceId, forkedId, cwd) {
+export async function labelFork(
+  ctx: KindleContext,
+  sourceId: string,
+  forkedId: string,
+  cwd?: string,
+): Promise<string> {
   const source = await sessionState(ctx, sourceId, cwd)
   const base = (source && source.title ? source.title : '').trim() || '（未命名会话）'
   const title = ('分叉：' + base).slice(0, 100)
@@ -125,8 +175,7 @@ export async function labelFork(ctx, sourceId, forkedId, cwd) {
   return title
 }
 
-/** Hide one Session from the list. Files stay on disk; the GUI can restore it. */
-export async function archiveSession(ctx, sessionId) {
+export async function archiveSession(ctx: KindleContext, sessionId: string): Promise<void> {
   const workspace = host.workspaceController
   if (!workspace || typeof workspace.archiveSession !== 'function') {
     throw new Error('这个 Host 没有挂载 workspace 服务，无法删除会话。')
@@ -135,40 +184,42 @@ export async function archiveSession(ctx, sessionId) {
   archivedLocally.add(sessionId)
 }
 
-export async function cancelSession(ctx, sessionId) {
+export async function cancelSession(ctx: KindleContext, sessionId: string): Promise<void> {
   await sessions().cancel({ sessionId })
 }
 
-/**
- * Run state only: cheap enough to poll from the device every few seconds.
- * @returns {Promise<{running: boolean, updatedAt: number, title: string} | null>}
- */
-export async function sessionState(ctx, sessionId, cwd) {
+export async function sessionState(
+  ctx: KindleContext,
+  sessionId: string,
+  cwd?: string,
+): Promise<SessionState | null> {
   const sessions = await listSessions(ctx, cwd)
   const found = sessions.find((s) => s.sessionId === sessionId)
   if (!found) return null
   return { running: found.running, updatedAt: found.updatedAt, title: found.title }
 }
 
-/**
- * Rebuild the visible transcript of one Session.
- * @returns {Promise<{messages: Array<object>, running: boolean, updatedAt: number, title: string}>}
- */
-export async function readTranscript(ctx, sessionId, cwd) {
+export async function readTranscript(
+  ctx: KindleContext,
+  sessionId: string,
+  cwd?: string,
+): Promise<Transcript> {
   const state = await sessionState(ctx, sessionId, cwd)
   const inspection = await sessions().inspect(sessionId, signalFor(30000))
   const events = Array.isArray(inspection?.events) ? inspection.events : []
 
-  const calls = new Map()
+  const calls = new Map<string, ToolCall>()
   for (const event of events) {
     if (event.type === 'tool/call') {
       const data = event.data || {}
-      calls.set(String(data.callId), { name: String(data.name || 'tool'), args: String(data.arguments || '') })
+      calls.set(String(data.callId), {
+        name: String(data.name || 'tool'),
+        args: String(data.arguments || ''),
+      })
     }
   }
 
-  /** Surface entries survive `replace` rewrites, so track them by seq. */
-  const surface = []
+  const surface: SessionEvent[] = []
   let rewriteFloor = 0
   for (const event of events) {
     if (!SURFACE_TYPES.has(event.type)) continue
@@ -186,15 +237,11 @@ export async function readTranscript(ctx, sessionId, cwd) {
   }
   surface.sort((a, b) => a.seq - b.seq)
 
-  const messages = []
+  const messages: TranscriptMessage[] = []
   for (const event of surface) {
     const data = event.data || {}
     if (event.type === 'user/message') {
-      // Two payload shapes coexist in the durable log: `assistant`/`system`
-      // messages nest the message under `data.message`, while `user/message`
-      // carries it at the top level. Injected prompts (runtime context, skill
-      // catalog) are logged as user messages too, so keep only real ones.
-      const message = data.message || data
+      const message = (data.message || data) as SessionMessage
       const source = message && message.source ? String(message.source.kind || '') : ''
       if (source && source !== 'user') continue
       const text = textBlocks(message)
@@ -203,11 +250,17 @@ export async function readTranscript(ctx, sessionId, cwd) {
     }
     if (event.type === 'assistant/message') {
       const text = textBlocks(data.message)
-      if (text) messages.push({ kind: 'assistant', seq: event.seq, text, interrupted: data.interrupted === true })
+      if (text)
+        messages.push({
+          kind: 'assistant',
+          seq: event.seq,
+          text,
+          interrupted: data.interrupted === true,
+        })
       continue
     }
     if (event.type === 'tool/result') {
-      const message = data.message || {}
+      const message = (data.message || {}) as SessionMessage
       const call = calls.get(String(message.toolCallId))
       const text = textBlocks(message)
       messages.push({
@@ -230,7 +283,7 @@ export async function readTranscript(ctx, sessionId, cwd) {
   }
 }
 
-function textBlocks(message) {
+function textBlocks(message: SessionMessage | null | undefined): string {
   const content = message && Array.isArray(message.content) ? message.content : []
   const parts = []
   for (const block of content) {
@@ -241,20 +294,10 @@ function textBlocks(message) {
   return parts.join('\n').trim()
 }
 
-
-/**
- * Reasoning-effort selection.
- *
- * The catalog lists, per model route, the efforts that adapter accepts
- * (`low`/`high`/`max` for DeepSeek, none for models without reasoning). The
- * per-session choice lives in the `modelSelection` projection, so reading it
- * never resumes an Agent; setting it does, which is why the UI only offers
- * this on a session page.
- */
-const catalogCache = { at: 0, value: null }
+const catalogCache: { at: number; value: ModelCatalog | null } = { at: 0, value: null }
 const CATALOG_TTL = 5 * 60 * 1000
 
-export async function modelCatalog(ctx) {
+export async function modelCatalog(ctx: KindleContext): Promise<ModelCatalog> {
   const now = Date.now()
   if (catalogCache.value && now - catalogCache.at < CATALOG_TTL) return catalogCache.value
   const value = await sessions().modelCatalog()
@@ -263,38 +306,27 @@ export async function modelCatalog(ctx) {
   return value
 }
 
-/**
- * Current route, its display name, and the efforts it accepts.
- * @returns {Promise<{provider: string, model: string, name: string,
- *   efforts: Array<{id: string, name: string, description?: string}>,
- *   current: string}>}
- */
-export async function modelChoice(ctx, sessionId) {
+export async function modelChoice(ctx: KindleContext, sessionId: string): Promise<ModelChoice> {
   const catalog = await modelCatalog(ctx)
   const fallback = catalog.default || { provider: '', model: '' }
-  let selection = fallback
+  let selection: { provider: string; model: string; reasoningEffort?: string } = fallback
   try {
     const value = await sessions().projections({ sessionId }, signalFor(10000))
     const view = value && value.values ? value.values.modelSelection : null
     if (view && view.next) selection = view.next
-  } catch (error) {
-    // A cold or migrated session may not expose projections; the deployment
-    // default is still the right thing to show.
-  }
+  } catch (error) {}
 
   const group = (catalog.groups || []).find((entry) => entry.id === selection.provider)
   const model = group && (group.models || []).find((entry) => entry.id === selection.model)
   const reasoning = model && model.reasoning
 
-  // The model catalog is advisory and several adapters leave `reasoning` out of
-  // it entirely; the adapter that owns the route is the only reliable source
-  // for the effort levels it will accept.
   const info = await modelCapabilities(ctx, selection.provider, selection.model)
   const resolved = info && info.reasoning
   const catalogEfforts = Array.isArray(reasoning && reasoning.efforts) ? reasoning.efforts : []
-  const efforts = Array.isArray(resolved && resolved.efforts) && resolved.efforts.length > 0
-    ? resolved.efforts
-    : catalogEfforts
+  const efforts =
+    Array.isArray(resolved && resolved.efforts) && resolved.efforts.length > 0
+      ? resolved.efforts
+      : catalogEfforts
   const current =
     selection.reasoningEffort ||
     (resolved && resolved.defaultEffort) ||
@@ -309,8 +341,11 @@ export async function modelChoice(ctx, sessionId) {
   }
 }
 
-/** Install one effort on the session's current route. */
-export async function setReasoningEffort(ctx, sessionId, effort) {
+export async function setReasoningEffort(
+  ctx: KindleContext,
+  sessionId: string,
+  effort: string,
+): Promise<ModelChoice> {
   const chosen = await modelChoice(ctx, sessionId)
   await sessions().selectModel({
     sessionId,
@@ -321,10 +356,13 @@ export async function setReasoningEffort(ctx, sessionId, effort) {
   return { ...chosen, current: effort }
 }
 
-/** Per-route capability lookups (the catalog omits reasoning for some adapters). */
-const infoCache = new Map()
+const infoCache = new Map<string, { at: number; value: ModelInfo | null }>()
 
-async function modelCapabilities(ctx, provider, model) {
+async function modelCapabilities(
+  ctx: KindleContext,
+  provider: string,
+  model: string,
+): Promise<ModelInfo | null> {
   const llm = host.llm
   if (!llm || typeof llm.resolveModelInfo !== 'function' || !provider || !model) return null
   const key = `${provider}/${model}`
@@ -340,8 +378,7 @@ async function modelCapabilities(ctx, provider, model) {
   }
 }
 
-/** Test hook: forget the cached catalog. */
-export function clearCatalogCache() {
+export function clearCatalogCache(): void {
   catalogCache.at = 0
   catalogCache.value = null
   infoCache.clear()

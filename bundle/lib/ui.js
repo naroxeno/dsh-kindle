@@ -1,13 +1,3 @@
-/**
- * Page shell, styles, and the three server-rendered pages.
- *
- * Everything here targets WebKit 531/534 (Safari 4/5): no flexbox, no grid,
- * no `position: fixed`, no `fetch`, no template literals in shipped JS. The
- * only client-side script is the run-state poller and a tiny caret inserter.
- */
-// Hot reload: carry this module's own ?gen=N stamp (empty when imported
-// in place, e.g. by the tests) into every dependency, so one generation of the
-// UI never renders with another generation's math/markdown code.
 const STAMP = new URL(import.meta.url).search;
 const { escapeHtml, texToSvg, convertPromptMath } = await import('./math.js' + STAMP);
 const { renderMarkdown, inline } = await import('./markdown.js' + STAMP);
@@ -149,7 +139,9 @@ export function renderList(config, sessions, notice, extras = {}) {
             const flags = [
                 s.running ? '<span class="flag">生成中</span>' : '',
                 s.blank ? '<span class="flag">空会话</span>' : '',
-            ].filter(Boolean).join('');
+            ]
+                .filter(Boolean)
+                .join('');
             const id = escapeHtml(s.sessionId);
             return `<div class="session">
   <a class="title" href="/c/${id}">${escapeHtml(s.title)}</a>
@@ -198,24 +190,18 @@ export function renderDelete(config, view) {
 </form>`;
     return shell('删除会话', body, { fontSize: config.fontSize });
 }
-/**
- * @param {object} config
- * @param {object} view
- * @param {string} view.sessionId
- * @param {string} view.title
- * @param {Array<object>} view.messages
- * @param {boolean} view.running
- * @param {number} view.updatedAt
- * @param {boolean} view.hasOlder
- * @param {number} view.window
- */
-/** Reasoning-effort switch for the session's current model route. */
-const EFFORT_LABELS = { off: '关', low: '低', medium: '中', high: '高', max: '最大' };
+const EFFORT_LABELS = {
+    off: '关',
+    low: '低',
+    medium: '中',
+    high: '高',
+    max: '最大',
+};
 function modelBar(view) {
     const model = view.model;
     if (!model || !Array.isArray(model.efforts) || model.efforts.length < 2)
         return '';
-    const buttons = model.efforts
+    let buttons = model.efforts
         .map((effort) => {
         const active = effort.id === model.current;
         const label = escapeHtml(EFFORT_LABELS[effort.id] || effort.name || effort.id);
@@ -224,8 +210,6 @@ function modelBar(view) {
             : `<button type="submit" name="effort" value="${escapeHtml(effort.id)}" class="mini">${label}</button>`;
     })
         .join(' ');
-    // A deployment default can name an effort the adapter no longer lists
-    // (`reasoningEffort: max` from config). Show it rather than nothing.
     if (model.current && !model.efforts.some((effort) => effort.id === model.current)) {
         buttons += ` <button type="button" class="mini on" disabled>${escapeHtml(EFFORT_LABELS[model.current] || model.current)}</button>`;
     }
@@ -233,11 +217,13 @@ function modelBar(view) {
     return `<div class="modelbar"${title}><span class="label">思考</span>
 <form method="post" action="/c/${escapeHtml(view.sessionId)}/effort">${buttons}</form></div>`;
 }
-/** Account readout: platform wallets plus the links to use/top up. */
 export function renderAccount(config, view) {
     const account = view.account || {};
     const links = account.links || {};
-    const out = [`<div class="nav"><a href="/s">‹ 列表</a><a href="/me">刷新</a></div>`, '<h1>账户</h1>'];
+    const out = [
+        `<div class="nav"><a href="/s">‹ 列表</a><a href="/me">刷新</a></div>`,
+        '<h1>账户</h1>',
+    ];
     if (account.ok) {
         for (const wallet of account.wallets) {
             out.push(`<p class="big">余额 <strong>${escapeHtml(wallet.text)}</strong></p>`);
@@ -270,15 +256,15 @@ export function renderMessages(config, messages) {
     const fontPx = config.fontSize;
     const parts = [];
     let tools = [];
-    // Tool calls are the noisiest thing on the page. Group a run of them into one
-    // compact panel so the conversation keeps its shape.
     function flushTools() {
         if (!tools.length)
             return;
-        const rows = tools.map((tool) => {
+        const rows = tools
+            .map((tool) => {
             const snippet = tool.text.length > 160 ? tool.text.slice(0, 160) + ' …' : tool.text;
             return `<div class="toolrow"><div class="toolname">⚙ ${escapeHtml(tool.name)}${tool.error ? ' · 失败' : ''}</div><div class="toolbody${tool.error ? ' err' : ''}">${escapeHtml(snippet)}</div></div>`;
-        }).join('');
+        })
+            .join('');
         parts.push(`<div class="msg tools"><div class="who">工具 · ${tools.length} 次</div>${rows}</div>`);
         tools = [];
     }
@@ -352,13 +338,6 @@ ${runTail(view.sessionId, view.cursor, view.running, Boolean(view.fresh || view.
 </script>`;
     return shell(view.title || '会话', body, { fontSize: config.fontSize, bodyClass: 'hei' });
 }
-/**
- * Incremental refresh: after the first full page, new messages arrive as an
- * HTML fragment and are appended in place. A full reload costs ~3.5s on the
- * device and throws away the draft, so this is the fast path; `replace` mode
- * covers the cases where the server cannot promise an append (pagination,
- * rewritten turns).
- */
 function runTail(sessionId, cursor, running, jump, fresh) {
     const id = JSON.stringify(String(sessionId));
     const start = JSON.stringify(Number(cursor) || 0);

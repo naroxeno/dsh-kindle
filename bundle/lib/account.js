@@ -1,12 +1,3 @@
-/**
- * Platform account readout for the Kindle client.
- *
- * `ctx.accountController` (dsh-api-account-controller) is the same service the
- * Web GUI's account page uses: `getState()` is local, `getBalance()` asks
- * Platform for the recharge and bonus wallets. Both are optional here — a
- * profile without the account extension simply shows no balance.
- */
-/** Identity the Host needs for one Platform request. */
 function clientMeta() {
     return {
         version: '1',
@@ -14,18 +5,11 @@ function clientMeta() {
         timezoneOffsetSeconds: -new Date().getTimezoneOffset() * 60,
     };
 }
-const cache = { at: 0, value: null, ttl: 0 };
-/**
- * Read wallets plus the Platform links, memoized for a couple of minutes so a
- * page load is a memory read instead of a request to Platform.
- *
- * @param {object|null} controller - `ctx.accountController`, if mounted.
- * @param {{timeoutMs?: number, maxAgeMs?: number}} [options]
- * @returns {Promise<{ok: boolean, timedOut?: boolean, reason?: string,
- *   wallets?: Array<{currency: string, amount: number, text: string}>,
- *   bonuses?: Array<{currency: string, amount: number, text: string}>,
- *   links?: {usageUrl?: string, topUpUrl?: string}}>}
- */
+const cache = {
+    at: 0,
+    value: null,
+    ttl: 0,
+};
 export async function readAccount(controller, options = {}) {
     const timeoutMs = options.timeoutMs || 4000;
     const maxAgeMs = options.maxAgeMs || 120000;
@@ -75,7 +59,6 @@ async function load(controller) {
         links: linksOut,
     };
 }
-/** The controller is optional, so a rejection is data, not an error. */
 async function safe(fn) {
     try {
         return await fn();
@@ -99,20 +82,17 @@ function walletsOf(list) {
     }
     return out;
 }
-/** e-ink shows a compact amount; two decimals unless the server sends more. */
 export function money(currency, amount) {
     const symbol = currency === 'USD' ? '$' : currency === 'CNY' ? '¥' : '';
     const text = amount.toFixed(2);
     return `${symbol}${text}`;
 }
-/** One-line summary for the list page; null when nothing is displayable. */
 export function balanceLine(account) {
     if (!account || !account.ok || !account.wallets.length)
         return '';
     const parts = account.wallets.map((w) => w.text);
     return parts.join(' / ');
 }
-/** Reset the memoized readout; tests use it to keep cases independent. */
 export function clearAccountCache() {
     cache.at = 0;
     cache.value = null;
