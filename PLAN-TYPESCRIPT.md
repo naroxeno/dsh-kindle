@@ -289,6 +289,14 @@ export interface KindleHost {
 
 - `allowJs: false`、`strict: true`；修掉 `noImplicitAny` 与 `strictNullChecks` 的真题；
 - **验收**：`npx tsc --noEmit` 干净；`npm test` 全绿；`grep -rn ': any' src/` 只剩壳边界那一处（`app.ts` 的 `as KindleHost` 不算 `any` 标注）。
+- **执行记录**：2026-10-30 完成，提交 `152c254`。`tsconfig.json` 改为 `allowJs: false`、`strict: true`（删 `checkJs`）；首轮报 27 个错，集中在 `app.ts`（12）、`sessions.ts`（8）、`account.ts`（3）、`math.ts`（2）、`ui.ts`/`prompt.ts` 各 1。修完后 `npx tsc --noEmit` 干净，`npm test` 全绿、`check:dist` 通过、`prettier --check` 干净。
+- **修法与偏差**：
+  1. `catch (error)` 在 strict 下是 `unknown`：`app.ts` 加本地 `errorText(error: unknown)`，其余文件就地 `(error as { message?: unknown } | null)?.message || error`。对 `Error`/字符串/`null` 的输出与旧表达式逐字相同。
+  2. `app.ts` 的 `logger.error(...)` 在 `host.ts` 里是可选方法：改为 `logger.error?.(...)`。这是 `ui.ts` 的 `buttons` 之后第二个「旧代码在缺 logger 时本来会 500」的隐患，正常 Host 下无行为变化。
+  3. `sessions.ts` 的 `setHost`：`Object.keys(partial)` 断言为 `Array<keyof KindleServices>`，绕开 `Partial` 无索引签名；写入仍是逐 key `|| null`。
+  4. `sessions.ts` 的 `modelChoice`：把 `resolved.efforts` 拆成 `resolvedEfforts` 局部量（strict 不会跨 `&&`/`Array.isArray` 保留窄化），语义不变；`modelCapabilities` 把 `undefined` 归一成 `null`。
+  5. `account.ts`/`ui.ts` 的 `wallets` 在 `ok: true` 下仍声明为可选：用 `|| []` 兜底，真实 `readAccount` 路径不变；`math.ts` 的 `engine()` 要求 `doc` 与 `adaptor` 同时存在，`amToTex` 改为先取局部再赋值。
+- **验收（实际做的）**：`npx tsc --noEmit` 干净；`grep -rn ': any' src/` 无输出（比计划更严：连壳边界也没有 `any` 标注）；`npm test` 全绿；重跑 M3 的渲染比对脚本，10 份输出仍全部 `RENDER-IDENTICAL`。
 - **回滚**：改回 `strict: false, allowJs: true`。
 
 ### M5 兼容门（约 1 小时）
