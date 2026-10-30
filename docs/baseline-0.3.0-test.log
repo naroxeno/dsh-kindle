@@ -1,0 +1,66 @@
+# baseline 0.3.0 test log
+2026-10-30T19:23:05+08:00
+node v26.11.1
+npm 12.2.1
+workdir /home/naroxeno/main/kindle-dsh/bundle
+
+npm notice run dsh-kindle@0.3.0 test
+npm notice run node test/render-test.mjs && node test/server-test.mjs && node test/hot-test.mjs && node test/browser-test.mjs
+md ms 66 page ms 15 html KB 42
+svg count 7
+has ex unit: false
+matherr spans: 2
+merror leaked: false
+first svg tag: <svg style="vertical-align:-10.6px" xmlns="http://www.w3.org/2000/svg" width="139.3px" height="43.2px" role="img" focusable="false" viewBox="0 -1089.5 4642.7 1441.6" xmlns:xlink="http://www.w3.org/199
+prompt conv: 求 ${\sum_{{{i}={1}}}^{{n}}}{i}$ 的值
+version match: true (0.3.0 vs 0.3.0)
+[log] kindle-ui: generation 1 active (initial, 0 reloads)
+[log] kindle UI listening on http://127.0.0.1:8091/s (workspace /tmp/kindle-ws-test, hot reload on)
+[log] kindle login link (open once on the device): http://127.0.0.1:8091/login?t=secret
+1 unauth /s -> 401 true
+2 login -> 303 cookie set
+3 list -> 200 true
+4 create -> 303 /c/sess-ie7spk
+5 session page -> 200 len 10285 textarea true
+6 prompt -> 1 {"name":"kindle:display","order":10200} bytes 478
+7 preview -> 200 svgs 2
+8 send -> 303 /c/sess-ie7spk?fresh=1
+9 state -> 200 "1793359386823:0"
+10 page after -> 200 svgs 3 user bubble true assistant bubble true
+11 title/list -> true
+12 debug -> kindle-ui 0.3.0
+hot: generation 1 (0 reloads, auto on)
+{"registered":1,"lastError":"","section":"kindle:display"}
+prompt bytes: 1066
+delete (workspace services): ready
+account (balance): ready
+model catalog: deepseek-official/deepseek-flash (off,low,high,max)
+18 tail init -> replace cursor 2 has u true running 0
+19 tail idle -> append html len 0
+20 tail append -> append has u true cursor moved true
+21 tail rewrite -> replace
+13 rename page -> 200 true
+14 rename post -> 303 true
+15 fork -> 303 fork-22jvps true titled true
+16 delete page -> 200 true
+17 delete post -> 303 gone true fork kept true
+22 list balance -> true account link true
+23 account page -> 200 balance true bonus true links true
+27 fork page -> 200 bubbles true
+24 effort bar -> 200 bar true labels true four true current true
+25 effort post -> 303 stored high
+26 effort guard -> 400
+28 subagent hidden -> true
+baseline: generation 1 | prompt bytes 1066
+ui.js edit -> generation 2
+math.js edit -> generation 3 | svg width 81.9 -> 41
+prompt/kindle.md edit -> generation 4 | prompt bytes 1106
+broken ui.js -> generation stayed 4 | 2026-10-30T11:23:08.681Z changed: Unexpected end of input
+fixed ui.js -> generation 5
+idle -> generation 6 | reloads 5
+hot-test: ok, one listener, generation 6 after 5 reloads
+browser: first message -> true
+browser: appended after load -> true
+browser: message blocks -> 2
+
+EXIT=0

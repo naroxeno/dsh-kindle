@@ -1,0 +1,18 @@
+{
+  "ip": "192.168.10.40",
+  "receivedAt": "2026-10-21T05:10:51.446Z",
+  "headers": {
+    "host": "192.168.10.40:8090",
+    "user-agent": "curl/8.23.0",
+    "accept": "*/*",
+    "content-type": "text/plain",
+    "content-length": "35"
+  },
+  "body": {
+    "ua": "test",
+    "lines": [
+      "a=b",
+      "c=d"
+    ]
+  }
+}

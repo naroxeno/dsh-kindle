@@ -1,0 +1,76 @@
+import { renderMarkdown } from '../lib/markdown.js'
+import { renderSession, renderList, renderPreview } from '../lib/ui.js'
+import { convertPromptMath, texToSvg } from '../lib/math.js'
+import { VERSION } from '../lib/index.js'
+import { readFileSync } from 'node:fs'
+
+const t0 = Date.now()
+const cfg = { fontSize: 30, pageSize: 6 }
+
+const assistant = `## 解方程
+
+由求根公式
+
+$$x = \\frac{-b \\pm \\sqrt{b^2-4ac}}{2a}$$
+
+代入 $a=1, b=-3, c=2$ 得 $x_1 = 1$, $x_2 = 2$。
+
+- 第一点 **重点**
+- 第二点 \`code\`
+
+\`\`\`js
+const x = 1
+\`\`\`
+
+| 名称 | 值 |
+|---|---|
+| a | 1 |
+| b | -3 |
+
+见 https://example.com 。
+
+矩阵：
+
+$$
+\begin{pmatrix} a & b \\ c & d \end{pmatrix}
+$$
+
+带编号：
+
+$$
+E = mc^2 \tag{1}
+$$
+
+无法解析的：$\\notacommand{1}$
+
+不存在的环境：$\\begin{nosuchenv} x \\end{nosuchenv}$`
+
+const html = renderMarkdown(assistant, { fontPx: 30 })
+const t1 = Date.now()
+const page = renderSession(cfg, {
+  sessionId: 'sess-1',
+  title: '测试会话',
+  messages: [
+    { kind: 'user', text: convertPromptMath('解 $frac{-b +- sqrt(b^2-4ac)}{2a}$ 这个公式') },
+    { kind: 'assistant', text: assistant },
+    { kind: 'tool', name: 'bash', text: 'total 12\ndrwxr-xr-x 2 user user 4096' },
+  ],
+  running: true,
+  updatedAt: 1700000000000,
+  hasOlder: true,
+  window: 6,
+})
+const t2 = Date.now()
+console.log('md ms', t1 - t0, 'page ms', t2 - t1, 'html KB', Math.round(page.length / 1024))
+console.log('svg count', (page.match(/<svg/g) || []).length)
+console.log('has ex unit:', /[\d.]+ex/.test(page))
+console.log('matherr spans:', (page.match(/class="matherr"/g) || []).length)
+console.log('merror leaked:', /merror/.test(page))
+const m = page.match(/<svg[^>]*>/)
+console.log('first svg tag:', m && m[0].slice(0, 200))
+console.log('prompt conv:', convertPromptMath('求 $sum_(i=1)^n i$ 的值'))
+
+// A published package must not disagree with the version it reports at runtime.
+const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
+console.log('version match:', VERSION === pkg.version, `(${VERSION} vs ${pkg.version})`)
+if (VERSION !== pkg.version) process.exitCode = 1

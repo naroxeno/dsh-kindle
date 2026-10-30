@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<title>DSH Kindle 自检</title>
+<style type="text/css">
+body { background:#fff; color:#000; font-family:serif; font-size:26px; line-height:1.5; margin:0; padding:16px 20px 120px 20px; }
+h1 { font-size:44px; line-height:1.2; margin:10px 0 6px 0; }
+h2 { font-size:34px; margin:38px 0 8px 0; border-top:3px solid #000; padding-top:10px; }
+p { margin:8px 0; }
+.big { font-size:40px; }
+.huge { font-size:56px; }
+.note { font-size:22px; color:#444; }
+table { border-collapse:collapse; width:100%; font-size:24px; }
+td { border-bottom:1px solid #bbb; padding:6px 4px; vertical-align:top; }
+td.k { width:34%; color:#333; }
+button { font-size:30px; padding:14px 20px; margin:8px 8px 0 0; border:2px solid #000; background:#eee; }
+button:active { background:#000; color:#fff; }
+a { color:#000; }
+.box { border:2px solid #000; padding:12px; margin:10px 0; }
+#ta { width:100%; height:180px; font-size:30px; font-family:monospace; border:2px solid #000; padding:8px; }
+#pal button { font-size:26px; padding:10px 14px; }
+pre { font-size:20px; white-space:pre-wrap; border:1px solid #999; padding:10px; background:#f4f4f4; }
+svg { background:#ffe; }
+.mono { font-family:monospace; }
+</style>
+</head>
+<body>
+
+<h1>DSH Kindle 自检页</h1>
+<p class="note">服务器时间 <span class="mono">{{SERVER_TIME}}</span> · 你的 IP <span class="mono">{{IP}}</span></p>
+<p class="note">{{UA}}</p>
+
+<h2>1. 文字与布局</h2>
+<p>普通 26px 正文，汉字与 Latin 混排：Dsh 前端 Kindle 版，测试 ABCdef 123。</p>
+<p class="big">大字 40px：设置 · 会话 · 发送</p>
+<p class="huge">超大 56px：公式</p>
+<div id="ruler" style="width:100px;height:100px;background:#000;"></div>
+<p class="note" id="rulerNote">上面 100px 方块。</p>
+<div class="box" id="flexbox" style="display:flex;width:600px;">
+  <div style="width:100px;background:#ddd;">A</div>
+  <div style="width:100px;background:#bbb;">B</div>
+</div>
+<p class="note">上面两个方块：若左右并排 = flex 可用；若上下堆叠 = flex 不可用。</p>
+<div class="box" id="gridbox" style="display:grid;grid-template-columns:1fr 1fr;width:600px;">
+  <div style="background:#ddd;">C1</div>
+  <div style="background:#bbb;">C2</div>
+</div>
+<p class="note">上面：若左右并排 = grid 可用。</p>
+
+<h2>2. 公式（SVG，三种变体）</h2>
+<p class="note">A：MathJax 原样（ex 单位）</p>
+<div id="wrapEx">{{EX}}</div>
+<p class="note">B：服务端换算成 px</p>
+<div id="wrapPx">{{PX}}</div>
+<p class="note">C：作为外部图片 &lt;img src="/math.svg"&gt;</p>
+<p><img id="imgsvg" src="/math.svg" alt="formula"></p>
+<p class="note">D：行内公式嵌在句子中间：设判别式为 {{F2}}，则根为上式。</p>
+
+<h2>3. 交互</h2>
+<p><button id="btn" type="button">点我计数</button> <span id="cnt" class="mono">0</span></p>
+<p><a id="link" href="#anchor">锚点链接（测试点击与下划线）</a> <span id="linkmsg" class="mono"></span></p>
+
+<h2>4. 公式输入（AsciiMath）</h2>
+<p class="note">点按钮在光标处插入模板。</p>
+<div id="pal">
+<button type="button" data-i="frac{}{}">分数</button>
+<button type="button" data-i="sqrt{}">根号</button>
+<button type="button" data-i="root{}{}">n次根</button>
+<button type="button" data-i="^{}">上标</button>
+<button type="button" data-i="_{}">下标</button>
+<button type="button" data-i="int_{}^{}">积分</button>
+<button type="button" data-i="sum_{}^{}">求和</button>
+<button type="button" data-i="prod_{}^{}">连乘</button>
+<button type="button" data-i="lim_{}">极限</button>
+<button type="button" data-i="alpha">α</button>
+<button type="button" data-i="beta">β</button>
+<button type="button" data-i="gamma">γ</button>
+<button type="button" data-i="theta">θ</button>
+<button type="button" data-i="lambda">λ</button>
+<button type="button" data-i="pi">π</button>
+<button type="button" data-i="mu">μ</button>
+<button type="button" data-i="sigma">σ</button>
+<button type="button" data-i="omega">ω</button>
+<button type="button" data-i="<=">≤</button>
+<button type="button" data-i=">=">≥</button>
+<button type="button" data-i="!=">≠</button>
+<button type="button" data-i="~~">≈</button>
+<button type="button" data-i="+-">±</button>
+<button type="button" data-i="xx">×</button>
+<button type="button" data-i="infty">∞</button>
+<button type="button" data-i="sin">sin</button>
+<button type="button" data-i="cos">cos</button>
+<button type="button" data-i="tan">tan</button>
+<button type="button" data-i="log">log</button>
+<button type="button" data-i="ln">ln</button>
+</div>
+<p><textarea id="ta" placeholder="在这里输入 AsciiMath，例如 frac{-b +- sqrt{b^2-4ac}}{2a}"></textarea></p>
+<p><button id="echo" type="button">发送回环测试</button> <span id="echomsg" class="mono"></span></p>
+
+<h2>5. 诊断数据</h2>
+<pre id="report">收集中…</pre>
+<p><button id="again" type="button">重新上传</button> <span id="upmsg" class="mono"></span></p>
+
+<script type="text/javascript">var SERVER_TIME = {{SERVER_MS}}; var SERVER_UA = "{{UA_ESC}}";</script>
+<script type="text/javascript" src="/app.js"></script>
+</body>
+</html>

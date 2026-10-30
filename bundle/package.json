@@ -1,0 +1,88 @@
+{
+  "name": "dsh-kindle",
+  "version": "0.3.0",
+  "description": "Server-rendered web UI for DeepSeek Harness on e-readers (Kindle Paperwhite, WebKit 534): formula input with AsciiMath/LaTeX, session management, balance and reasoning-effort controls, no JavaScript framework.",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek",
+    "deepseek-harness",
+    "kindle",
+    "paperwhite",
+    "eink",
+    "e-reader",
+    "mathjax",
+    "latex",
+    "asciimath"
+  ],
+  "license": "MIT",
+  "author": "naroxeno",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "compatibility": {
+      "dsh": ">=0.2.1-rc.1 <0.3.0-0",
+      "dshReleases": {
+        "0.2.1-rc.2": "compatible"
+      }
+    }
+  },
+  "dshhub": {
+    "schemaVersion": 1,
+    "displayName": "DSH for Kindle",
+    "summary": "在 Kindle 原生浏览器里用 DeepSeek Harness：服务端渲染的单页、AsciiMath 公式输入、会话管理、余额与思考强度。为 WebKit 534 级别的旧浏览器设计。",
+    "categories": [
+      "Web UI",
+      "阅读"
+    ],
+    "surfaces": [
+      "host"
+    ],
+    "capabilities": {
+      "provides": []
+    },
+    "compatibility": {
+      "dsh": ">=0.2.1-rc.1 <0.3.0-0",
+      "node": ">=20"
+    },
+    "permissions": {
+      "network": []
+    }
+  },
+  "engines": {
+    "node": ">=20",
+    "dsh": ">=0.2.1-rc.1 <0.3.0-0"
+  },
+  "os": [
+    "darwin",
+    "linux",
+    "win32"
+  ],
+  "dependencies": {
+    "asciimath-to-latex": "0.5.1",
+    "mathjax-full": "3.2.2"
+  },
+  "scripts": {
+    "test": "node test/render-test.mjs && node test/server-test.mjs && node test/hot-test.mjs && node test/browser-test.mjs",
+    "pack:check": "npm pack --dry-run"
+  },
+  "files": [
+    "lib/",
+    "prompt/",
+    "docs/",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}

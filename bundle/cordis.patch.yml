@@ -1,0 +1,26 @@
+# dsh-kindle — a server-rendered conversation UI for the Kindle experimental
+# browser (WebKit 531/534, ES5 only, no flexbox/grid/fetch/position:fixed).
+#
+# The plugin starts its own plain-HTTP listener (the shipped dsh-host-webserver
+# binds loopback only), renders every page on the host, and renders math to
+# inline SVG with MathJax so the device only needs the 2010-era feature set.
+#
+# Config:
+#   host: 0.0.0.0        # LAN interface; keep loopback if you use a tunnel agent locally
+#   port: 8090
+#   token: ''            # required non-empty in practice: every request must carry cookie kd=<token>
+#   cwd: '~/kindle-ws'   # Sessions created from this UI live in this directory
+#   fontSize: 30         # base CSS pixel size (KPW4 viewport is 1072x1268 CSS px)
+#   pageSize: 6          # messages per page
+#   hotReload: true      # re-import lib/*.js and prompt/kindle.md when they change (edits apply on the next request)
+- insert:
+    - id: kindle-ui
+      name: dsh-kindle
+      config:
+        host: 0.0.0.0
+        port: 8090
+        token: ''
+        cwd: '~/kindle-ws'
+        fontSize: 30
+        pageSize: 6
+        hotReload: true
