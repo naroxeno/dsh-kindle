@@ -46,7 +46,7 @@ const CACHE_LIMIT = 3000
 type Engine = { doc: ReturnType<typeof mathjax.document>; adaptor: ReturnType<typeof liteAdaptor> }
 
 function engine(): Engine {
-  if (shared.doc) return { doc: shared.doc, adaptor: shared.adaptor }
+  if (shared.doc && shared.adaptor) return { doc: shared.doc, adaptor: shared.adaptor }
   shared.adaptor = liteAdaptor()
   RegisterHTMLHandler(shared.adaptor)
   const tex = new TeX({ packages: TEX_PACKAGES })
@@ -113,11 +113,12 @@ export function texToSvg(tex: string, opts: TexToSvgOptions = {}): string {
 }
 
 function amToTex(source: string): string {
-  if (!shared.amToTex) {
-    const mod = require('asciimath-to-latex')
-    shared.amToTex = mod.default || mod
-  }
-  return shared.amToTex(source)
+  const cached = shared.amToTex
+  if (cached) return cached(source)
+  const mod = require('asciimath-to-latex')
+  const convert: (value: string) => string = mod.default || mod
+  shared.amToTex = convert
+  return convert(source)
 }
 
 export function asciiToTex(source: string): string {

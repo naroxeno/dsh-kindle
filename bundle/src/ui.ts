@@ -323,7 +323,7 @@ export function renderAccount(config: KindleConfig, view: AccountPageView): stri
   ]
 
   if (account.ok) {
-    for (const wallet of account.wallets) {
+    for (const wallet of account.wallets || []) {
       out.push(`<p class="big">余额 <strong>${escapeHtml(wallet.text)}</strong></p>`)
     }
     if (account.bonuses && account.bonuses.length) {

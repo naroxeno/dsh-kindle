@@ -26,7 +26,7 @@ export async function readAccount(controller, options = {}) {
         value = await Promise.race([load(controller), timeout]);
     }
     catch (error) {
-        value = { ok: false, reason: String((error && error.message) || error) };
+        value = { ok: false, reason: String(error?.message || error) };
     }
     finally {
         if (timer)
@@ -88,9 +88,12 @@ export function money(currency, amount) {
     return `${symbol}${text}`;
 }
 export function balanceLine(account) {
-    if (!account || !account.ok || !account.wallets.length)
+    if (!account || !account.ok)
         return '';
-    const parts = account.wallets.map((w) => w.text);
+    const wallets = account.wallets || [];
+    if (!wallets.length)
+        return '';
+    const parts = wallets.map((w) => w.text);
     return parts.join(' / ');
 }
 export function clearAccountCache() {

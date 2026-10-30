@@ -30,7 +30,7 @@ if (shared.rev !== REV) {
 const cache = shared.cache;
 const CACHE_LIMIT = 3000;
 function engine() {
-    if (shared.doc)
+    if (shared.doc && shared.adaptor)
         return { doc: shared.doc, adaptor: shared.adaptor };
     shared.adaptor = liteAdaptor();
     RegisterHTMLHandler(shared.adaptor);
@@ -92,11 +92,13 @@ export function texToSvg(tex, opts = {}) {
     return out;
 }
 function amToTex(source) {
-    if (!shared.amToTex) {
-        const mod = require('asciimath-to-latex');
-        shared.amToTex = mod.default || mod;
-    }
-    return shared.amToTex(source);
+    const cached = shared.amToTex;
+    if (cached)
+        return cached(source);
+    const mod = require('asciimath-to-latex');
+    const convert = mod.default || mod;
+    shared.amToTex = convert;
+    return convert(source);
 }
 export function asciiToTex(source) {
     const trimmed = source.trim();

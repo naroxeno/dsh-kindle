@@ -45,7 +45,7 @@ export async function ensureKindlePrompt(controller, sessionId) {
         return true;
     }
     catch (error) {
-        shared.lastError = String((error && error.message) || error);
+        shared.lastError = String(error?.message || error);
         return false;
     }
 }
