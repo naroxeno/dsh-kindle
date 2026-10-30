@@ -72,6 +72,8 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "watch": "tsc -w -p .",
+    "format": "prettier --write --no-error-on-unmatched-pattern \"src/**/*.ts\"",
+    "format:check": "prettier --check --no-error-on-unmatched-pattern \"src/**/*.ts\"",
     "check:dist": "node scripts/check-dist.mjs",
     "test": "npm run build && npm run check:dist && node test/render-test.mjs && node test/server-test.mjs && node test/hot-test.mjs && node test/browser-test.mjs",
     "pack:check": "npm pack --dry-run"
@@ -91,6 +93,7 @@
   "devDependencies": {
     "@deepseek-ai/cordis": "^4.0.5",
     "@types/node": "^26.6.6",
+    "prettier": "^3.9.10",
     "typescript": "^7.0.2"
   }
 }

@@ -1,8 +1,8 @@
 # kindle-dsh：TypeScript 迁移方案（0.3.0 → 0.4.0）
 
-- 状态：**待审计**（Naro 手工审 → 交给另一个会话执行）
+- 状态：**已审计**（2026-10-30，两项修订见 §0.1）；M0、M1 已完成（M1 提交 497deab）
 - 写于：2026-10-30
-- 对象：`/home/naroxeno/main/kindle-dsh/bundle`（工作副本 0.3.0，**当前不是 git 仓库**）
+- 对象：`/home/naroxeno/main/kindle-dsh/bundle`（工作副本 0.3.0；仓库已在 M0 时 git 化，tag `baseline-0.3.0`）
 - 本文所有 `file:line` 指向当前工作副本；执行者开工前先确认这些行号还有效（用 `grep -n` 复核）
 
 ---
@@ -12,6 +12,15 @@
 - **审计者**：只看 §4 决策、§6 类型骨架、§7 两道门，然后对 §9 的 Q1–Q6 逐条给结论。结论直接写回本文件（改成「已裁决」）或回复编号。
 - **执行者**：先读本文 + `HANDOFF.md`，从 M0 开始；**每完成一个里程碑停下等验收**，不要一口气做完。
 - 本文不包含实现代码，只有边界、顺序、验收和禁令。实现细节由执行者自己写，但不得越过 §1 的非目标与 §11 的禁令。
+
+---
+
+## 0.1 审计修订（2026-10-30）
+
+- **M1 的「`git diff --stat lib/` 为空」撤销**：tsc 打印器固定改动格式（每层缩进 4 空格、每条语句补分号、删空行、去掉函数调用尾逗号），产物逐字节等于基线不可达。验收改为证明**语义与渲染输出等价**：去掉空白/分号/逗号后 7 个文件与 `baseline-0.3.0` 逐字符相同（实测仅 `app.js` 少 2 个尾逗号）、25 个渲染入口 sha256 逐字节相同、`npm test` 全绿、`check-dist` 通过。
+- **`devDependencies` 破例收 `prettier`**：AGENT.md 第 4 条要求所有 `.ts` 过 Prettier，仓库里必须有能执行它的东西。prettier 只进 devDependencies，不进运行时、不进包；配置放 `bundle/.prettierrc`（无分号、单引号、2 空格、printWidth 100）。
+- §2 是审计时的快照；M0/M1 已改掉它的版本控制（现有 git + tag `baseline-0.3.0`）与 typescript 安装状态。tsconfig 的 `target` 落成 `esnext`（`nodenext` 只适用于 `module`/`moduleResolution`）。
+- §9 的 Q1（产物入库 + 一致性门）、Q2（壳留在 `lib/`）已按建议值执行（M1 落地）；Q3–Q6 到各自里程碑再定，偏离时回填裁决记录。
 
 ---
 
@@ -91,6 +100,7 @@ bundle/
 │   └── check-dist.mjs      # 产物一致性门（M1）
 ├── test/
 │   └── compat-test.mjs     # Kindle 兼容门（M5）
+├── .prettierrc             # 格式约定（AGENT.md 第 4 条）
 ├── tsconfig.json           # 新增
 └── package.json            # scripts / devDependencies 变化
 ```
@@ -98,7 +108,8 @@ bundle/
 `package.json` 变化（只这些）：
 
 - `scripts.build` / `scripts.watch` / `scripts.check:dist`，`test` 前置 build + 两道门；
-- `devDependencies`: `typescript`、`@types/node`、`@deepseek-ai/cordis@4.0.5`；
+- `scripts.format` / `scripts.format:check`，只扫 `src/**/*.ts`；
+- `devDependencies`: `typescript`、`@types/node`、`@deepseek-ai/cordis@4.0.5`、`prettier`（例外，见 §0.1）；
 - `files` 保持不动（本来就不含 `src/`、`scripts/`、`test/`）；
 - `main` / `exports` 保持 `lib/index.js`；
 - `version` → `0.4.0`（Q5）。
@@ -118,7 +129,7 @@ bundle/
 **D3 两个壳不 TS 化（`index.js`、`hot.js` 留在 `lib/`，手写）。**
 理由：壳存在的意义是「永远能跑」。让它依赖构建产物，等于把救生圈绑在船上。
 
-**D4 两段式迁移：先 `src/*.js` 全量落位（allowJs，产物逐字节等于基线），再逐文件 `.js` → `.ts`。**
+**D4 两段式迁移：先 `src/*.js` 全量落位（allowJs，产物与基线语义等价、格式随 tsc 打印器，见 §0.1），再逐文件 `.js` → `.ts`。**
 理由：先证明「tsc → lib/」这一步是无害的（可 diff、可回滚），再引入类型。每一步都有现有测试兜底。
 
 **D5 类型来源：`@deepseek-ai/cordis@4.0.5` 取 `Context`/`Plugin`/服务装饰器；控制器接口手写成窄接口放 `src/host.ts`，不依赖 `dsh-api-*` 的 alpha 包。**
@@ -232,10 +243,11 @@ export interface KindleHost { config: KindleConfig; services: KindleServices; au
 ### M1 构建骨架（约 1 小时）
 
 - `cp lib/{app,sessions,ui,markdown,math,account,prompt}.js src/`；
-- 写 `tsconfig.json`（`target/module/moduleResolution=nodenext`、`rootDir=src`、`outDir=lib`、`allowJs=true`、`checkJs=false`、`strict=false`（M4 再开）、`skipLibCheck=true`、`verbatimModuleSyntax=true`、`isolatedModules=true`、`sourceMap=false`）；
-- `npm i -D typescript @types/node @deepseek-ai/cordis@4.0.5`；
+- 写 `tsconfig.json`（`module`/`moduleResolution=nodenext`、`target=esnext`、`rootDir=src`、`outDir=lib`、`allowJs=true`、`checkJs=false`、`strict=false`（M4 再开）、`skipLibCheck=true`、`verbatimModuleSyntax=true`、`isolatedModules=true`、`sourceMap=false`）；
+- `npm i -D typescript @types/node @deepseek-ai/cordis@4.0.5 prettier`；
 - 写 `scripts/build.mjs`、`scripts/check-dist.mjs`，接进 `npm test` 首位；
-- **验收**：`npm run build` 后 `git diff --stat lib/` 为空（产物与基线逐字节相同）；`npm test` 全绿；`check-dist` 通过。
+- **验收**：`npm run build` 后产物与 `baseline-0.3.0` 语义等价（去空白/分号/逗号后逐文件相同）、25 个渲染入口指纹不变；`npm test` 全绿；`check-dist` 通过。（「`git diff lib/` 为空」已撤销，理由见 §0.1）
+- **执行记录**：2026-10-30 完成，提交 `497deab`；tsc 7.0.2，渲染指纹 25/25 一致，`npm test` 全绿。
 - **回滚**：`git checkout -- lib/ && rm -rf src scripts tsconfig.json`。
 
 ### M2 边界类型（约 1 小时）
@@ -311,7 +323,7 @@ export interface KindleHost { config: KindleConfig; services: KindleServices; au
 1. 不接 `@deepseek-ai/dsh-hmr`，不改 `hot.js`/`index.js` 的任何逻辑（改也不行，哪怕只是格式化）。
 2. 不改 HTTP 语义、路由、鉴权、响应头。
 3. 不改渲染输出的 HTML/CSS/内联脚本（含那两段重复的内联脚本，不许合并）。
-4. 不加运行时依赖；`devDependencies` 只允许 `typescript`、`@types/node`、`@deepseek-ai/cordis`。
+4. 不加运行时依赖；`devDependencies` 只允许 `typescript`、`@types/node`、`@deepseek-ai/cordis`、`prettier`（prettier 为审计破例，见 §0.1）。
 5. 不把 `any` 铺开；`as unknown as` 只能出现在 `generation.ts` 与 `app.ts` 的 host 边界。
 6. 不跳过 M0 的 git 基线；不一次做完所有里程碑。
 7. 不做 `worker_thread`、`module.register`、`dispose` 回收等「顺手改造」。
@@ -321,6 +333,7 @@ export interface KindleHost { config: KindleConfig; services: KindleServices; au
 ## 11. 开发者工作流变化（迁移后的日常）
 
 - 改代码：`src/*.ts` → `npm run build`（或常开 `npm run watch`）→ `lib/*.js` 更新 → **下一次请求 hot shell 自动换代**，`/debug` 的 generation 加一。
+- 格式化：`npm run format`（Prettier，仅 `src/**/*.ts`；没格式化过的 `.ts` 视为未完成），核对用 `npm run format:check`。
 - 需要重启的情况不变：改 `index.js`、`hot.js`、`cordis.patch.yml`，或升级安装。
 - 排查「改了没生效」：先 `npm run check:dist`，再看 `/debug` 的 generation 有没有涨。
 
