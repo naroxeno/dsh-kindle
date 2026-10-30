@@ -42,6 +42,10 @@ model catalog: deepseek-official/deepseek-flash (off,low,high,max)
 **0.3.0 起：改 `lib/*.js` 或 `prompt/kindle.md` 不用重启 dsh。** 下一次 HTTP 请求自动换新代码，
 `/debug` 的 `generation` 加一，端口/cookie/监听都不变。实现见第 4 节第 8 条。
 
+> **源码位置（2026-10-30 迁移后）**：唯一手写源码在 `bundle/src/*.ts`，`lib/*.js` 由 `npm run build`（tsc）生成。
+> 改行为请改 `src/` 再构建，**不要手改 `lib/*.js`**（`index.js`/`hot.js` 两个壳除外）。`hot.js` 的 `HOT_FILES` 已含 `generation.js`。
+> 细节与里程碑见 `PLAN-TYPESCRIPT.md`。
+
 仍然需要重启的情况（这些是壳，进程启动时加载）：
 
 - 改 `lib/index.js` / `lib/hot.js`；
@@ -81,10 +85,13 @@ curl -s -b /tmp/kd.jar http://127.0.0.1:8090/debug | head -3   # generation 应�
     ├── LICENSE           MIT
     ├── prompt/kindle.md  按会话注入的系统提示词（478 字）
     ├── docs/             打包用的截图
+    ├── src/              唯一手写源码（.ts，npm run build → lib/；README 记录迁移约定）
+    ├── scripts/          build.mjs（tsc）+ check-dist.mjs（逐字节比对）
     ├── lib/
     │   ├── index.js      插件入口：name/inject/apply → mount(hot.js)（约 25 行）
     │   ├── hot.js        稳定壳：配置、token、HTTP 监听、按文件指纹换代、/debug 兜底（560 行）
     │   ├── app.js        可热重载的一代：路由、页面、错误页（约 470 行，被 hot.js 以 ?gen=N 导入）
+    │   ├── generation.js 按 ?gen= 加载五个兄弟模块的 11 字节入口（tsc 产物）
     │   ├── sessions.js   sessionController 适配层 + 日志读成消息（348 行）
     │   ├── math.js       TeX→SVG（MathJax），AsciiMath→LaTeX，跨代共享 engine/cache
     │   ├── markdown.js   极简 markdown → HTML（267 行，自写，无依赖）
@@ -117,7 +124,7 @@ Kindle 的浏览器是 2010 年的 WebKit：没有 flex/grid/fetch/Promise/class
 6. **公式**：输入 AsciiMath（`$frac{a}{b}$` 这种），发送前用 `asciimath-to-latex` 把每个 `$...$` 转成 LaTeX 交给模型；显示端只认 TeX，用 MathJax 转 SVG，服务端把 `ex` 换算成 px、给 `<path id>` 加前缀后内联。渲染失败输出 `<span class="matherr">`（浅灰底 + 原文），e-ink 上不再是黑块。
 7. **工具调用**：连续 tool/result 合并成一个「工具 · N 次」面板，每条 160 字。
 8. **热重载**：`index.js` 只挂 `hot.js`；`hot.js` 是稳定壳（配置/token/监听/鉴权/分发），每 250ms
-   最多检查一次文件指纹（`app.js`/`sessions`/`ui`/`markdown`/`math`/`prompt`/`account` + `prompt/kindle.md`
+   最多检查一次文件指纹（`app.js`/`generation`/`sessions`/`ui`/`markdown`/`math`/`prompt`/`account` + `prompt/kindle.md`
    的 size+mtime），变了就 `import('./app.js?gen=N')`。`app.js` 用同一 stamp 动态导入依赖，`ui.js`/
    `markdown.js` 再把 stamp 透传给 `math.js`，保证一次请求内模块同代。跨代共享放 `globalThis` 的 Symbol 槽：
    `Symbol.for('dsh-kindle.math')`（MathJax engine + SVG cache，按 `math.js` 自身哈希决定是否清 cache）、

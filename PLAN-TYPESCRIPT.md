@@ -275,7 +275,15 @@ export interface KindleHost {
 - `math.ts` 的 MathJax 装配段**不改**，只补类型（`mathjax-full` 的 d.ts 与实现同目录，若个别签名不匹配，用局部 `// @ts-expect-error` 并注明原因与行号，不许 `any` 铺开）；
 - 每转完一个文件跑一次 `npm test` + `check-dist`；
 - **验收**：`git diff` 里没有输出字符串变化（`lib/*.js` 的 HTML 片段逐字节相同）；`npx tsc --noEmit` 干净。
-- **回滚**：单个文件 `git checkout -- lib/<name>.js src/<name>.ts`。
+- **执行记录**：2026-10-30 完成，提交 `d67edc6`。7 个文件依次转换，每个文件单独跑 `npx tsc --noEmit` + `npm test`；最终 `npm test` 全绿、`check:dist` 通过、`prettier --check "src/**/*.ts"` 干净。
+- **接线与偏差**：
+  1. `app.ts` 用 `const generation = (await import('./generation.js' + STAMP)) as { load(): Promise<Generation> }` 换代（落实 M2 偏差 2）；`generation.js` 已加进 `lib/hot.js` 的 `HOT_FILES`，`hot.js` 只改这一个列表项。
+  2. `ui.ts` 唯一行为改动：原 `const buttons = model.efforts.map(...)` 后接 `buttons += ...`，tsc 报 TS2588，改为 `let buttons`。这不只是编译问题——「部署默认 effort 不在 adapter 列表」分支原本会在运行时抛 `TypeError`（此前从未执行过该分支），现在能正常显示当前档位。
+  3. `sessions.ts` 的 `setHost` 用 `const store: Record<string, unknown> = host` 逐 key 写（union key 的交叉写入要求）；`data.message` 用 `as SessionMessage` 收口。
+  4. `SessionView` 增可选 `updatedAt`/`version`（app 传、ui 不读），避免对象字面量 excess property 报错。
+  5. 注释按 AGENT.md 第 1 条删除；脚本剥注释时把 `ui.ts` 内联脚本里的两行 `//` 注释也当成源码注释删了（它们其实是页面里的 JS，位于模板字符串内）。与 `baseline-0.3.0` 逐字节比对渲染输出时抓到，已补回。
+- **验收（实际做的）**：用 `git archive baseline-0.3.0 bundle/lib` 取基线 `lib/`，与当前 `lib/` 分别渲染 markdown×2 + 会话/列表/登录/账户/改名/删除/预览/消息共 10 份输出，`diff` 为 `RENDER-IDENTICAL`；`npx tsc --noEmit` 干净。
+- **回滚**：单个文件 `git checkout -- lib/<name>.js src/<name>.ts`；整体 `git revert d67edc6`。
 
 ### M4 关 allowJs、开 strict（约 1 小时）
 
