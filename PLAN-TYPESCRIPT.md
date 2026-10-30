@@ -1,6 +1,6 @@
 # kindle-dsh：TypeScript 迁移方案（0.3.0 → 0.4.0）
 
-- 状态：**已审计**（2026-10-30，两项修订见 §0.1）；M0、M1 已完成（M1 提交 497deab）
+- 状态：**已审计**（2026-10-30，修订见 §0.1）；M0、M1、M2 已完成（M1 提交 497deab，M2 提交 96bcfa8）
 - 写于：2026-10-30
 - 对象：`/home/naroxeno/main/kindle-dsh/bundle`（工作副本 0.3.0；仓库已在 M0 时 git 化，tag `baseline-0.3.0`）
 - 本文所有 `file:line` 指向当前工作副本；执行者开工前先确认这些行号还有效（用 `grep -n` 复核）
@@ -188,14 +188,19 @@ export interface KindleServices {           // 只写本插件真正用到的成
   llm: unknown | null
   accountController: AccountControllerLike | null
 }
-export interface KindleHost { config: KindleConfig; services: KindleServices; auth: { token: string; hash: string | null }; logger: KindleLogger }
+export interface KindleHost {
+  ctx: { sessionController: SessionControllerLike }   // app.js 读 ctx.sessionController
+  config: KindleConfig; services: KindleServices
+  auth: { token: string; hash: string | null }; logger: KindleLogger
+  hot?: () => KindleHotStatus                          // /debug 读 generation/reloads
+}
 ```
 
 控制器窄接口从**实际调用点**反推（执行者不得凭想象补方法）：
 
-- `sessions.js`: `listSessions` / `createSession` / `sendPrompt` / `renameSession` / `forkSession` / `archiveSession` / `cancelSession` / `sessionState` / `readTranscript` / `modelCatalog` / `modelChoice` / `setReasoningEffort`
+- `sessions.js`: `listSessions` / `createSession` / `sendPrompt` / `renameSession` / `forkSession` / `archiveSession` / `cancelSession` / `sessionState` / `readTranscript` / `modelCatalog` / `modelChoice` / `setReasoningEffort`；另需 `resolveAgent`（`prompt.js:55`）
 - `account.js`: `readAccount`（`account.js:32`）
-- 工作区删除：`workspaceController.deleteSession`（`sessions.js` 归档/删除路径）
+- 工作区删除：`workspaceController.archiveSession`（`sessions.js:134`，参数 `{ sessionId, stopActivity: true }`）
 
 `src/app.ts` 的 `createApp(host: KindleHost): Promise<KindleApp>`；`src/hot.js` 传进来的对象是 `any`（壳不 TS 化），在 `app.ts` 边界一次 `as KindleHost`，理由与 D6 同。
 
@@ -254,6 +259,12 @@ export interface KindleHost { config: KindleConfig; services: KindleServices; au
 
 - 写 `src/host.ts`、`src/generation.ts`（此时 `.ts`，内部 import 仍指向 `./x.js`）；
 - **验收**：`npx tsc --noEmit` 无错；`npm test` 全绿；`generation.ts` 里只有一处 `as unknown as Generation`。
+- **执行记录**：2026-10-30 完成，提交 `96bcfa8`；`npx tsc --noEmit` 干净，`npm test` 全绿，`generation.ts` 只一处 cast；`lib/host.js`（`export {};`，11 B）与 `lib/generation.js` 入库。
+- **偏差（M3 前必须记住）**：
+  1. `tsconfig.json` 增 `"types": ["node"]`：TS 7.0.2 原生编译器不自动加载 `@types/node`，`node:http`/`node:fs` 报 TS2591（`--traceResolution` 显示 `Skipping module 'node:http' that looks like an absolute URI`），加 `types` 后消失。
+  2. `generation.ts` 保留 §5 的 `STAMP` 写法，但 **M3 必须由 `app.ts` 用带 `?gen=` 的 URL 动态 `import('./generation.js' + STAMP)`，并把 `generation.js` 加进 `lib/hot.js` 的 `HOT_FILES`**；若改为静态 import，`import.meta.url.search` 为空，五个兄弟模块失去按代隔离（M2 尚无消费者，未触发）。
+  3. 接口按实际调用点落地：`workspaceController` 的方法是 `archiveSession`（非 §5 原写的 `deleteSession`）；`sessionController` 另需 `resolveAgent`（`prompt.js:55`）；`workspaceRegistry.archivedSessionIds` 按 `Iterable<string>` 收；`llm.resolveModelInfo` 供思考强度补全。
+  4. `lib/host.js` 只有 `export {};`：check-dist 要求 `src/` 每个模块都有同名产物，接受这个 11 字节空模块。
 - **回滚**：删两个文件。
 
 ### M3 逐文件转 TS（约 3–4 小时，可分批）
