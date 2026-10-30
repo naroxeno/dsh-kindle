@@ -8,31 +8,29 @@
 // Hot reload: carry this module's own ?gen=N stamp (empty when imported
 // in place, e.g. by the tests) into every dependency, so one generation of the
 // UI never renders with another generation's math/markdown code.
-const STAMP = new URL(import.meta.url).search
-const { escapeHtml, texToSvg, convertPromptMath } = await import('./math.js' + STAMP)
-const { renderMarkdown, inline } = await import('./markdown.js' + STAMP)
-
+const STAMP = new URL(import.meta.url).search;
+const { escapeHtml, texToSvg, convertPromptMath } = await import('./math.js' + STAMP);
+const { renderMarkdown, inline } = await import('./markdown.js' + STAMP);
 const PALETTE = [
-  ['分式', '$frac{ }{ }$'],
-  ['根号', '$sqrt{ }$'],
-  ['平方', '$x^2$'],
-  ['下标', '$x_1$'],
-  ['积分', '$int_a^b f(x) dx$'],
-  ['求和', '$sum_(i=1)^n a_i$'],
-  ['极限', '$lim_(x->0) f(x)$'],
-  ['无穷', '$oo$'],
-  ['π', '$pi$'],
-  ['α', '$alpha$'],
-  ['θ', '$theta$'],
-  ['λ', '$lambda$'],
-  ['≤', '$le$'],
-  ['≥', '$ge$'],
-  ['≠', '$!=$'],
-  ['×', '$xx$'],
-  ['→', '$->$'],
-  ['⇔', '$<=>$'],
-]
-
+    ['分式', '$frac{ }{ }$'],
+    ['根号', '$sqrt{ }$'],
+    ['平方', '$x^2$'],
+    ['下标', '$x_1$'],
+    ['积分', '$int_a^b f(x) dx$'],
+    ['求和', '$sum_(i=1)^n a_i$'],
+    ['极限', '$lim_(x->0) f(x)$'],
+    ['无穷', '$oo$'],
+    ['π', '$pi$'],
+    ['α', '$alpha$'],
+    ['θ', '$theta$'],
+    ['λ', '$lambda$'],
+    ['≤', '$le$'],
+    ['≥', '$ge$'],
+    ['≠', '$!=$'],
+    ['×', '$xx$'],
+    ['→', '$->$'],
+    ['⇔', '$<=>$'],
+];
 const STYLE = (fontSize) => `
 *{box-sizing:border-box}
 html,body{margin:0;padding:0;background:#fff;color:#000}
@@ -116,23 +114,21 @@ button.wide{display:block;width:100%;text-align:center;font-size:0.78em;padding:
 .actions form{display:inline-block;margin:0}
 .mini{display:inline-block;font-family:sans-serif;font-size:0.52em;line-height:1.1;padding:10px 16px;margin:0 12px 0 0;border:2px solid #000;background:#f0f0f0;color:#000;text-decoration:none}
 input.mini{font-size:0.52em;padding:10px 16px;background:#f0f0f0}
-`
-
+`;
 function shell(title, body, opts = {}) {
-  const fontSize = opts.fontSize || 30
-  const bodyClass = opts.bodyClass ? ` class="${opts.bodyClass}"` : ''
-  return `<!DOCTYPE html>
+    const fontSize = opts.fontSize || 30;
+    const bodyClass = opts.bodyClass ? ` class="${opts.bodyClass}"` : '';
+    return `<!DOCTYPE html>
 <html lang="zh-CN"><head><meta charset="utf-8">
 <title>${escapeHtml(title)}</title>
 <style>${STYLE(fontSize)}</style>
 </head><body${bodyClass}>
 ${body}
-</body></html>`
+</body></html>`;
 }
-
 export function renderLogin(config, next, options) {
-  const failed = Boolean(options && options.error)
-  const body = `
+    const failed = Boolean(options && options.error);
+    const body = `
 <div class="nav"><strong>DSH · Kindle</strong></div>
 <h1>需要访问令牌</h1>
 ${failed ? '<p class="state">令牌不对，再试一次。</p>' : ''}
@@ -142,21 +138,20 @@ ${failed ? '<p class="state">令牌不对，再试一次。</p>' : ''}
   <p><input type="password" name="token" autocomplete="off"></p>
   <p><button type="submit" class="primary">进入</button></p>
 </form>
-<p class="hint">省事的做法：在电脑上打开日志里打印的登录链接（带 ?t=…），把它抄成 Kindle 的地址打开一次，之后就不用再输令牌了。</p>`
-  return shell('登录', body, { fontSize: config.fontSize })
+<p class="hint">省事的做法：在电脑上打开日志里打印的登录链接（带 ?t=…），把它抄成 Kindle 的地址打开一次，之后就不用再输令牌了。</p>`;
+    return shell('登录', body, { fontSize: config.fontSize });
 }
-
 export function renderList(config, sessions, notice, extras = {}) {
-  const rows = sessions.length
-    ? sessions
-        .map((s) => {
-          const when = formatTime(s.updatedAt)
-          const flags = [
-            s.running ? '<span class="flag">生成中</span>' : '',
-            s.blank ? '<span class="flag">空会话</span>' : '',
-          ].filter(Boolean).join('')
-          const id = escapeHtml(s.sessionId)
-          return `<div class="session">
+    const rows = sessions.length
+        ? sessions
+            .map((s) => {
+            const when = formatTime(s.updatedAt);
+            const flags = [
+                s.running ? '<span class="flag">生成中</span>' : '',
+                s.blank ? '<span class="flag">空会话</span>' : '',
+            ].filter(Boolean).join('');
+            const id = escapeHtml(s.sessionId);
+            return `<div class="session">
   <a class="title" href="/c/${id}">${escapeHtml(s.title)}</a>
   <div class="meta">${when} ${flags}</div>
   <div class="actions">
@@ -164,49 +159,45 @@ export function renderList(config, sessions, notice, extras = {}) {
     <a class="mini" href="/c/${id}/rename">改名</a>
     <a class="mini" href="/c/${id}/delete">删除</a>
   </div>
-</div>`
+</div>`;
         })
-        .join('\n')
-    : '<p class="hint">这里还没有会话。点上面的「新会话」开一个。</p>'
-
-  const balance = extras.balance
-    ? `<p class="bal"><a href="/me">余额 ${escapeHtml(extras.balance)}</a></p>`
-    : ''
-  const body = `
+            .join('\n')
+        : '<p class="hint">这里还没有会话。点上面的「新会话」开一个。</p>';
+    const balance = extras.balance
+        ? `<p class="bal"><a href="/me">余额 ${escapeHtml(extras.balance)}</a></p>`
+        : '';
+    const body = `
 <div class="nav"><strong>DSH · Kindle</strong><a href="/s">刷新</a><a href="/me">账户</a></div>
 ${balance}
 <form method="post" action="/new"><button type="submit" class="primary wide">＋ 新会话</button></form>
 ${notice ? `<p class="state">${escapeHtml(notice)}</p>` : ''}
-${rows}`
-  return shell('DSH Kindle', body, { fontSize: config.fontSize })
+${rows}`;
+    return shell('DSH Kindle', body, { fontSize: config.fontSize });
 }
-
 export function renderRename(config, view) {
-  const id = escapeHtml(view.sessionId)
-  const body = `
+    const id = escapeHtml(view.sessionId);
+    const body = `
 <div class="nav"><a href="/s">会话列表</a><a href="/c/${id}">‹ 返回会话</a></div>
 <h1>改名</h1>
 <form method="post" action="/c/${id}/rename">
   <p><input type="text" name="title" value="${escapeHtml(view.title || '')}" autocomplete="off"></p>
   <p class="hint">留空会由模型自动生成标题。改名只影响显示。</p>
   <p><button type="submit" class="primary">保存</button> <a href="/c/${id}">取消</a></p>
-</form>`
-  return shell('改名', body, { fontSize: config.fontSize })
+</form>`;
+    return shell('改名', body, { fontSize: config.fontSize });
 }
-
 export function renderDelete(config, view) {
-  const id = escapeHtml(view.sessionId)
-  const body = `
+    const id = escapeHtml(view.sessionId);
+    const body = `
 <div class="nav"><a href="/s">会话列表</a><a href="/c/${id}">‹ 返回会话</a></div>
 <h1>删除这个会话？</h1>
 <p>${escapeHtml(view.title || '（未命名会话）')}</p>
 <p class="hint">会话会从 Kindle 列表里移除，文件仍保留在 ${escapeHtml(view.cwd || '')} 下，电脑端可以找回。正在生成的会话要先停止。</p>
 <form method="post" action="/c/${id}/delete">
   <p><button type="submit" class="primary">删除</button> <a href="/c/${id}">取消</a></p>
-</form>`
-  return shell('删除会话', body, { fontSize: config.fontSize })
+</form>`;
+    return shell('删除会话', body, { fontSize: config.fontSize });
 }
-
 /**
  * @param {object} config
  * @param {object} view
@@ -219,105 +210,104 @@ export function renderDelete(config, view) {
  * @param {number} view.window
  */
 /** Reasoning-effort switch for the session's current model route. */
-const EFFORT_LABELS = { off: '关', low: '低', medium: '中', high: '高', max: '最大' }
-
+const EFFORT_LABELS = { off: '关', low: '低', medium: '中', high: '高', max: '最大' };
 function modelBar(view) {
-  const model = view.model
-  if (!model || !Array.isArray(model.efforts) || model.efforts.length < 2) return ''
-  const buttons = model.efforts
-    .map((effort) => {
-      const active = effort.id === model.current
-      const label = escapeHtml(EFFORT_LABELS[effort.id] || effort.name || effort.id)
-      return active
-        ? `<button type="button" class="mini on" disabled>${label}</button>`
-        : `<button type="submit" name="effort" value="${escapeHtml(effort.id)}" class="mini">${label}</button>`
+    const model = view.model;
+    if (!model || !Array.isArray(model.efforts) || model.efforts.length < 2)
+        return '';
+    const buttons = model.efforts
+        .map((effort) => {
+        const active = effort.id === model.current;
+        const label = escapeHtml(EFFORT_LABELS[effort.id] || effort.name || effort.id);
+        return active
+            ? `<button type="button" class="mini on" disabled>${label}</button>`
+            : `<button type="submit" name="effort" value="${escapeHtml(effort.id)}" class="mini">${label}</button>`;
     })
-    .join(' ')
-  // A deployment default can name an effort the adapter no longer lists
-  // (`reasoningEffort: max` from config). Show it rather than nothing.
-  if (model.current && !model.efforts.some((effort) => effort.id === model.current)) {
-    buttons += ` <button type="button" class="mini on" disabled>${escapeHtml(EFFORT_LABELS[model.current] || model.current)}</button>`
-  }
-  const title = model.name ? ` title="${escapeHtml(model.name)}"` : ''
-  return `<div class="modelbar"${title}><span class="label">思考</span>
-<form method="post" action="/c/${escapeHtml(view.sessionId)}/effort">${buttons}</form></div>`
+        .join(' ');
+    // A deployment default can name an effort the adapter no longer lists
+    // (`reasoningEffort: max` from config). Show it rather than nothing.
+    if (model.current && !model.efforts.some((effort) => effort.id === model.current)) {
+        buttons += ` <button type="button" class="mini on" disabled>${escapeHtml(EFFORT_LABELS[model.current] || model.current)}</button>`;
+    }
+    const title = model.name ? ` title="${escapeHtml(model.name)}"` : '';
+    return `<div class="modelbar"${title}><span class="label">思考</span>
+<form method="post" action="/c/${escapeHtml(view.sessionId)}/effort">${buttons}</form></div>`;
 }
-
 /** Account readout: platform wallets plus the links to use/top up. */
 export function renderAccount(config, view) {
-  const account = view.account || {}
-  const links = account.links || {}
-  const out = [`<div class="nav"><a href="/s">‹ 列表</a><a href="/me">刷新</a></div>`, '<h1>账户</h1>']
-
-  if (account.ok) {
-    for (const wallet of account.wallets) {
-      out.push(`<p class="big">余额 <strong>${escapeHtml(wallet.text)}</strong></p>`)
+    const account = view.account || {};
+    const links = account.links || {};
+    const out = [`<div class="nav"><a href="/s">‹ 列表</a><a href="/me">刷新</a></div>`, '<h1>账户</h1>'];
+    if (account.ok) {
+        for (const wallet of account.wallets) {
+            out.push(`<p class="big">余额 <strong>${escapeHtml(wallet.text)}</strong></p>`);
+        }
+        if (account.bonuses && account.bonuses.length) {
+            const text = account.bonuses.map((wallet) => wallet.text).join(' / ');
+            out.push(`<p class="hint">另有赠送余额 ${escapeHtml(text)}（不计入上面的余额）</p>`);
+        }
     }
-    if (account.bonuses && account.bonuses.length) {
-      const text = account.bonuses.map((wallet) => wallet.text).join(' / ')
-      out.push(`<p class="hint">另有赠送余额 ${escapeHtml(text)}（不计入上面的余额）</p>`)
+    else if (account.reason === 'no-service') {
+        out.push('<p>这个 Host 没有挂载账户服务，读不到余额。</p>');
     }
-  } else if (account.reason === 'no-service') {
-    out.push('<p>这个 Host 没有挂载账户服务，读不到余额。</p>')
-  } else if (account.reason === 'signed-out') {
-    out.push('<p>还没有登录 DeepSeek 平台账号，所以没有余额可读。</p>')
-  } else {
-    out.push('<p>余额暂时读不到（网络或登录状态）。</p>')
-  }
-
-  const actions = []
-  if (links.usageUrl) actions.push(`<a href="${escapeHtml(links.usageUrl)}">查看用量</a>`)
-  if (links.topUpUrl) actions.push(`<a href="${escapeHtml(links.topUpUrl)}">去充值</a>`)
-  if (actions.length) out.push(`<p class="pad">${actions.join(' · ')}</p>`)
-
-  out.push('<p class="hint">余额由平台账户接口读取，本机缓存两分钟。</p>')
-  return shell('账户', out.join('\n'), { fontSize: config.fontSize })
+    else if (account.reason === 'signed-out') {
+        out.push('<p>还没有登录 DeepSeek 平台账号，所以没有余额可读。</p>');
+    }
+    else {
+        out.push('<p>余额暂时读不到（网络或登录状态）。</p>');
+    }
+    const actions = [];
+    if (links.usageUrl)
+        actions.push(`<a href="${escapeHtml(links.usageUrl)}">查看用量</a>`);
+    if (links.topUpUrl)
+        actions.push(`<a href="${escapeHtml(links.topUpUrl)}">去充值</a>`);
+    if (actions.length)
+        out.push(`<p class="pad">${actions.join(' · ')}</p>`);
+    out.push('<p class="hint">余额由平台账户接口读取，本机缓存两分钟。</p>');
+    return shell('账户', out.join('\n'), { fontSize: config.fontSize });
 }
-
 export function renderMessages(config, messages) {
-  const fontPx = config.fontSize
-  const parts = []
-  let tools = []
-
-  // Tool calls are the noisiest thing on the page. Group a run of them into one
-  // compact panel so the conversation keeps its shape.
-  function flushTools() {
-    if (!tools.length) return
-    const rows = tools.map((tool) => {
-      const snippet = tool.text.length > 160 ? tool.text.slice(0, 160) + ' …' : tool.text
-      return `<div class="toolrow"><div class="toolname">⚙ ${escapeHtml(tool.name)}${tool.error ? ' · 失败' : ''}</div><div class="toolbody${tool.error ? ' err' : ''}">${escapeHtml(snippet)}</div></div>`
-    }).join('')
-    parts.push(`<div class="msg tools"><div class="who">工具 · ${tools.length} 次</div>${rows}</div>`)
-    tools = []
-  }
-
-  for (const message of messages) {
-    if (message.kind === 'tool') {
-      if (message.text) tools.push(message)
-      continue
+    const fontPx = config.fontSize;
+    const parts = [];
+    let tools = [];
+    // Tool calls are the noisiest thing on the page. Group a run of them into one
+    // compact panel so the conversation keeps its shape.
+    function flushTools() {
+        if (!tools.length)
+            return;
+        const rows = tools.map((tool) => {
+            const snippet = tool.text.length > 160 ? tool.text.slice(0, 160) + ' …' : tool.text;
+            return `<div class="toolrow"><div class="toolname">⚙ ${escapeHtml(tool.name)}${tool.error ? ' · 失败' : ''}</div><div class="toolbody${tool.error ? ' err' : ''}">${escapeHtml(snippet)}</div></div>`;
+        }).join('');
+        parts.push(`<div class="msg tools"><div class="who">工具 · ${tools.length} 次</div>${rows}</div>`);
+        tools = [];
     }
-    flushTools()
-    if (message.kind === 'user') {
-      parts.push(`<div class="msg u"><div class="who">你</div><div class="body">${renderUserText(message.text, fontPx)}</div></div>`)
-    } else if (message.kind === 'assistant') {
-      const tail = message.interrupted ? '<div class="hint">（已中断）</div>' : ''
-      parts.push(`<div class="msg a"><div class="who">DSH</div><div class="body">${renderMarkdown(message.text, { fontPx })}${tail}</div></div>`)
+    for (const message of messages) {
+        if (message.kind === 'tool') {
+            if (message.text)
+                tools.push(message);
+            continue;
+        }
+        flushTools();
+        if (message.kind === 'user') {
+            parts.push(`<div class="msg u"><div class="who">你</div><div class="body">${renderUserText(message.text, fontPx)}</div></div>`);
+        }
+        else if (message.kind === 'assistant') {
+            const tail = message.interrupted ? '<div class="hint">（已中断）</div>' : '';
+            parts.push(`<div class="msg a"><div class="who">DSH</div><div class="body">${renderMarkdown(message.text, { fontPx })}${tail}</div></div>`);
+        }
     }
-  }
-  flushTools()
-  return parts.join('\n') || '<p class="hint">还没有内容。</p>'
+    flushTools();
+    return parts.join('\n') || '<p class="hint">还没有内容。</p>';
 }
-
 export function renderSession(config, view) {
-  const older = view.hasOlder
-    ? `<p class="older"><a href="/c/${escapeHtml(view.sessionId)}?n=${view.window + config.pageSize}">↑ 更早的消息</a></p>`
-    : ''
-
-  const palette = PALETTE.map(([label, snippet]) => {
-    return `<button type="button" onclick="ins('${snippet.replace(/'/g, "\\'")}')">${escapeHtml(label)}</button>`
-  }).join('')
-
-  const body = `
+    const older = view.hasOlder
+        ? `<p class="older"><a href="/c/${escapeHtml(view.sessionId)}?n=${view.window + config.pageSize}">↑ 更早的消息</a></p>`
+        : '';
+    const palette = PALETTE.map(([label, snippet]) => {
+        return `<button type="button" onclick="ins('${snippet.replace(/'/g, "\\'")}')">${escapeHtml(label)}</button>`;
+    }).join('');
+    const body = `
 <div class="nav">
   <a href="/s">‹ 列表</a>
   <a href="/c/${escapeHtml(view.sessionId)}">刷新</a>
@@ -359,11 +349,9 @@ function ins(s){
 function doPreview(){document.getElementById('preview-msg').value=ta.value;document.getElementById('preview-form').submit();return false;}
 function doStop(){document.getElementById('stop-form').submit();return false;}
 ${runTail(view.sessionId, view.cursor, view.running, Boolean(view.fresh || view.running), Boolean(view.fresh))}
-</script>`
-
-  return shell(view.title || '会话', body, { fontSize: config.fontSize, bodyClass: 'hei' })
+</script>`;
+    return shell(view.title || '会话', body, { fontSize: config.fontSize, bodyClass: 'hei' });
 }
-
 /**
  * Incremental refresh: after the first full page, new messages arrive as an
  * HTML fragment and are appended in place. A full reload costs ~3.5s on the
@@ -372,10 +360,10 @@ ${runTail(view.sessionId, view.cursor, view.running, Boolean(view.fresh || view.
  * rewritten turns).
  */
 function runTail(sessionId, cursor, running, jump, fresh) {
-  const id = JSON.stringify(String(sessionId))
-  const start = JSON.stringify(Number(cursor) || 0)
-  const isRunning = running ? 'true' : 'false'
-  return `
+    const id = JSON.stringify(String(sessionId));
+    const start = JSON.stringify(Number(cursor) || 0);
+    const isRunning = running ? 'true' : 'false';
+    return `
 (function(){
   var id=${id},cursor=${start},running=${isRunning},idle=0,jump=${jump ? 'true' : 'false'},fresh=${fresh ? 'true' : 'false'};
   function byId(n){return document.getElementById(n);}
@@ -427,20 +415,18 @@ function runTail(sessionId, cursor, running, jump, fresh) {
     x.send(null);
   }
   setTimeout(tick, running?1200:4000);
-})();`
+})();`;
 }
-
 export function renderPreview(config, view) {
-  const fontPx = config.fontSize
-  const converted = convertPromptMath(String(view.draft || ''))
-  const rendered = converted.trim()
-    ? inline(converted, fontPx)
-    : '<span class="hint">（还没有内容）</span>'
-  const palette = PALETTE.map(([label, snippet]) => {
-    return `<button type="button" onclick="ins('${snippet.replace(/'/g, "\\'")}')">${escapeHtml(label)}</button>`
-  }).join('')
-
-  const body = `
+    const fontPx = config.fontSize;
+    const converted = convertPromptMath(String(view.draft || ''));
+    const rendered = converted.trim()
+        ? inline(converted, fontPx)
+        : '<span class="hint">（还没有内容）</span>';
+    const palette = PALETTE.map(([label, snippet]) => {
+        return `<button type="button" onclick="ins('${snippet.replace(/'/g, "\\'")}')">${escapeHtml(label)}</button>`;
+    }).join('');
+    const body = `
 <div class="nav"><a href="/c/${escapeHtml(view.sessionId)}">‹ 返回会话</a><strong>公式预览</strong></div>
 <h1>预览</h1>
 <div class="msg a"><div class="who">渲染结果</div><div class="body">${rendered}</div></div>
@@ -468,21 +454,18 @@ function ins(s){
   try{ta.focus();if(typeof b==='number'){ta.selectionStart=ta.selectionEnd=b+s.length;}}catch(e){}
 }
 function doPreview(){document.getElementById('preview-msg').value=ta.value;document.getElementById('preview-form').submit();return false;}
-</script>`
-
-  return shell('预览', body, { fontSize: config.fontSize })
+</script>`;
+    return shell('预览', body, { fontSize: config.fontSize });
 }
-
 function renderUserText(text, fontPx) {
-  const html = inline(text, fontPx)
-  return html
+    const html = inline(text, fontPx);
+    return html;
 }
-
 function formatTime(ms) {
-  if (!ms) return ''
-  const d = new Date(ms)
-  const pad = (n) => (n < 10 ? '0' + n : String(n))
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+    if (!ms)
+        return '';
+    const d = new Date(ms);
+    const pad = (n) => (n < 10 ? '0' + n : String(n));
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
-
-export { texToSvg }
+export { texToSvg };
