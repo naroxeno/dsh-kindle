@@ -1,36 +1,32 @@
-/**
- * dsh-kindle — one generation of the Kindle UI.
- *
- * hot.js imports this file as app.js?gen=N. The '?gen=N' suffix must be
- * carried to every sibling module below, or a reload would mix two versions of
- * the code (and register the display prompt twice). Nothing in here may be
- * imported statically by index.js/hot.js: this whole file is meant to be
- * replaced between requests.
- */
 import { readFileSync } from 'node:fs'
+import type { IncomingMessage, ServerResponse } from 'node:http'
+import type { Generation } from './generation.js'
+import type { KindleApp, KindleConfig, KindleContext, KindleHost, ModelChoice } from './host.js'
+import type { Transcript } from './sessions.js'
 
 const STAMP = new URL(import.meta.url).search
-const VERSION = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version
+const VERSION: string = JSON.parse(
+  readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
+).version
 
 class HttpError extends Error {
-  constructor(status, message) {
+  status: number
+
+  constructor(status: number, message: string) {
     super(message)
     this.status = status
   }
 }
 
-export async function createApp(host) {
+export async function createApp(host: KindleHost): Promise<KindleApp> {
   const { ctx, config, services, logger } = host
-  const [sessionsApi, math, ui, prompt, account] = await Promise.all([
-    import('./sessions.js' + STAMP),
-    import('./math.js' + STAMP),
-    import('./ui.js' + STAMP),
-    import('./prompt.js' + STAMP),
-    import('./account.js' + STAMP),
-  ])
+  const generation = (await import('./generation.js' + STAMP)) as {
+    load(): Promise<Generation>
+  }
+  const { sessions: sessionsApi, math, ui, prompt, account } = await generation.load()
   sessionsApi.setHost(services)
 
-  async function handle(req, res) {
+  async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
     try {
       await route(req, res)
     } catch (error) {
@@ -47,7 +43,7 @@ export async function createApp(host) {
     }
   }
 
-  async function route(req, res) {
+  async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const url = new URL(req.url || '/', 'http://kindle.invalid')
     const path = url.pathname
     const method = (req.method || 'GET').toUpperCase()
@@ -64,12 +60,14 @@ export async function createApp(host) {
 
     if (method === 'GET' && path === '/s') {
       const sessions = await sessionsApi.listSessions(ctx, config.cwd)
-      // Cached for two minutes, so this is usually a memory read; the list page
-      // never waits longer than a couple of seconds for Platform.
       const balance = await account.readAccount(services.accountController, { timeoutMs: 1500 })
-      sendHtml(res, 200, ui.renderList(config, sessions, '', {
-        balance: account.balanceLine(balance),
-      }))
+      sendHtml(
+        res,
+        200,
+        ui.renderList(config, sessions, '', {
+          balance: account.balanceLine(balance),
+        }),
+      )
       return
     }
 
@@ -79,27 +77,36 @@ export async function createApp(host) {
       return
     }
 
-    // Small diagnostic: which generation is live, did the display contract
-    // reach any agent yet, and are the optional services present?
     if (method === 'GET' && path === '/debug') {
       const status = prompt.promptStatus()
       const text = await prompt.kindlePrompt()
-      const hot = typeof host.hot === 'function' ? host.hot() : {}
-      const generation = Number(hot.generation) || 0
-      const reloads = Number(hot.reloads) || 0
+      const hot = typeof host.hot === 'function' ? host.hot() : null
+      const generation = Number(hot && hot.generation) || 0
+      const reloads = Number(hot && hot.reloads) || 0
       const lines = [
         'kindle-ui ' + VERSION,
-        'hot: generation ' + generation + ' (' + reloads + ' reload' + (reloads === 1 ? '' : 's') + ', auto ' + (hot.auto ? 'on' : 'off') + ')',
+        'hot: generation ' +
+          generation +
+          ' (' +
+          reloads +
+          ' reload' +
+          (reloads === 1 ? '' : 's') +
+          ', auto ' +
+          (hot && hot.auto ? 'on' : 'off') +
+          ')',
       ]
-      if (hot.lastError) lines.push('hot error: ' + hot.lastError)
+      if (hot && hot.lastError) lines.push('hot error: ' + hot.lastError)
       lines.push(
         JSON.stringify(status),
         'prompt bytes: ' + Buffer.byteLength(text),
         'delete (workspace services): ' + (services.workspaceController ? 'ready' : 'missing'),
         'account (balance): ' + (services.accountController ? 'ready' : 'missing'),
-        'model catalog: ' + await catalogLine(ctx),
+        'model catalog: ' + (await catalogLine(ctx)),
       )
-      res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' })
+      res.writeHead(200, {
+        'content-type': 'text/plain; charset=utf-8',
+        'cache-control': 'no-store',
+      })
       res.end(lines.join('\n') + '\n')
       return
     }
@@ -119,20 +126,29 @@ export async function createApp(host) {
 
     await requireOwnedSession(sessionsApi, ctx, config, sessionId)
 
-    // Give this session's agent the Kindle display contract. Resolving the agent
-    // here (not on the list page) keeps untouched sessions cold.
     await prompt.ensureKindlePrompt(ctx.sessionController, sessionId)
 
     if (method === 'GET' && action === '') {
-      const window = clampInt(Number(url.searchParams.get('n')) || config.pageSize, 1, 400, config.pageSize)
-      let transcript
+      const window = clampInt(
+        Number(url.searchParams.get('n')) || config.pageSize,
+        1,
+        400,
+        config.pageSize,
+      )
+      let transcript: Transcript
       try {
         transcript = await sessionsApi.readTranscript(ctx, sessionId, config.cwd)
       } catch (error) {
-        // A running turn keeps appending to the log; a cold read can catch a
-        // half-written line. Show what we have instead of an error page.
-        logger.warn?.('kindle transcript read failed for ' + sessionId + ': ' + (error && error.message))
-        transcript = { sessionId, title: '', messages: [], running: true, updatedAt: Date.now() }
+        logger.warn?.(
+          'kindle transcript read failed for ' + sessionId + ': ' + (error && error.message),
+        )
+        transcript = {
+          title: '',
+          messages: [],
+          rewriteFloor: 0,
+          running: true,
+          updatedAt: Date.now(),
+        }
       }
       const visible = transcript.messages.slice(-window)
       const model = await modelInfo(ctx, sessionsApi, sessionId)
@@ -156,33 +172,41 @@ export async function createApp(host) {
       return
     }
 
-    // Incremental refresh: the session page polls this and appends only what is
-    // new. 'replace' is the fallback whenever an append could be wrong (page
-    // opened on an older window, or a turn rewrote earlier entries).
     if (method === 'GET' && action === 'tail') {
-      const windowSize = clampInt(Number(url.searchParams.get('n')) || config.pageSize, 1, 400, config.pageSize)
+      const windowSize = clampInt(
+        Number(url.searchParams.get('n')) || config.pageSize,
+        1,
+        400,
+        config.pageSize,
+      )
       const since = Math.max(0, Math.floor(Number(url.searchParams.get('since')) || 0))
       let transcript
       try {
         transcript = await sessionsApi.readTranscript(ctx, sessionId, config.cwd)
       } catch (error) {
-        logger.warn?.('kindle transcript read failed for ' + sessionId + ': ' + (error && error.message))
-        transcript = { messages: [], rewriteFloor: 0, running: true, updatedAt: Date.now() }
+        logger.warn?.(
+          'kindle transcript read failed for ' + sessionId + ': ' + (error && error.message),
+        )
+        transcript = {
+          messages: [],
+          rewriteFloor: 0,
+          running: true,
+          updatedAt: Date.now(),
+          title: '',
+        }
       }
       const visible = transcript.messages.slice(-windowSize)
       const cursor = visible.length ? visible[visible.length - 1].seq : 0
       const floor = Number(transcript.rewriteFloor) || 0
       const before = since > 0 ? visible.findIndex((message) => message.seq === since) : -1
-      // Append only when the client's cursor is still on screen and every
-      // rewrite touches content the client has not seen yet (startSeq > since).
-      // A rewrite at or before the cursor means the page already shows something
-      // that no longer exists, so it needs a fresh window.
       const appendable = since > 0 && before !== -1 && (floor === 0 || floor > since)
       const pending = appendable ? visible.slice(before + 1) : []
       const payload = {
         mode: appendable ? 'append' : 'replace',
         html: appendable
-          ? (pending.length ? ui.renderMessages(config, pending) : '')
+          ? pending.length
+            ? ui.renderMessages(config, pending)
+            : ''
           : ui.renderMessages(config, visible),
         cursor,
         running: transcript.running ? 1 : 0,
@@ -226,13 +250,19 @@ export async function createApp(host) {
 
     if (method === 'GET' && action === 'rename') {
       const current = await sessionsApi.sessionState(ctx, sessionId, config.cwd)
-      sendHtml(res, 200, ui.renderRename(config, { sessionId, title: current ? current.title : '' }))
+      sendHtml(
+        res,
+        200,
+        ui.renderRename(config, { sessionId, title: current ? current.title : '' }),
+      )
       return
     }
 
     if (method === 'POST' && action === 'rename') {
       const body = await readBody(req)
-      const title = String(body.get('title') || '').trim().slice(0, 100)
+      const title = String(body.get('title') || '')
+        .trim()
+        .slice(0, 100)
       if (!title) throw new HttpError(400, '标题不能为空。')
       await sessionsApi.renameSession(ctx, sessionId, title)
       redirect(res, '/c/' + encodeURIComponent(sessionId))
@@ -252,11 +282,15 @@ export async function createApp(host) {
 
     if (method === 'POST' && action === 'fork') {
       const forked = await sessionsApi.forkSession(ctx, sessionId)
-      // Name the copy so the list does not show two identical rows. Never fatal.
       try {
         await sessionsApi.labelFork(ctx, sessionId, forked, config.cwd)
       } catch (error) {
-        logger.error('kindle-ui: could not title fork ' + forked + ': ' + (error && error.message ? error.message : error))
+        logger.error(
+          'kindle-ui: could not title fork ' +
+            forked +
+            ': ' +
+            (error && error.message ? error.message : error),
+        )
       }
       redirect(res, '/c/' + encodeURIComponent(forked))
       return
@@ -264,11 +298,15 @@ export async function createApp(host) {
 
     if (method === 'GET' && action === 'delete') {
       const current = await sessionsApi.sessionState(ctx, sessionId, config.cwd)
-      sendHtml(res, 200, ui.renderDelete(config, {
-        sessionId,
-        title: current ? current.title : '',
-        cwd: config.cwd,
-      }))
+      sendHtml(
+        res,
+        200,
+        ui.renderDelete(config, {
+          sessionId,
+          title: current ? current.title : '',
+          cwd: config.cwd,
+        }),
+      )
       return
     }
 
@@ -295,11 +333,9 @@ export async function createApp(host) {
     handle,
     version: VERSION,
     modules: { sessions: sessionsApi, math, ui, prompt, account },
-    /** Live optional services changed; sessions.js caches them. */
     setHost(next) {
       sessionsApi.setHost(next)
     },
-    /** The shell keeps serving requests already in flight; nothing to flush. */
     dispose() {},
     loginPage(next, options) {
       return ui.renderLogin(config, next, options)
@@ -309,8 +345,11 @@ export async function createApp(host) {
     },
   }
 
-  /** Catalog lookup for the session page; a catalog failure hides the row. */
-  function modelInfo(controller, api, sessionId) {
+  function modelInfo(
+    controller: KindleContext,
+    api: Generation['sessions'],
+    sessionId: string,
+  ): Promise<ModelChoice> {
     return api.modelChoice(controller, sessionId).catch(() => ({
       provider: '',
       model: '',
@@ -320,8 +359,7 @@ export async function createApp(host) {
     }))
   }
 
-  /** One /debug line: how many efforts the active route offers. */
-  async function catalogLine(controller) {
+  async function catalogLine(controller: KindleContext): Promise<string> {
     try {
       const model = await sessionsApi.modelChoice(controller, '')
       const names = model.efforts.map((entry) => entry.id).join(',')
@@ -331,17 +369,21 @@ export async function createApp(host) {
     }
   }
 
-  /** The Kindle UI only ever touches sessions living in its own workspace. */
-  async function requireOwnedSession(api, controller, options, sessionId) {
+  async function requireOwnedSession(
+    api: Generation['sessions'],
+    controller: KindleContext,
+    options: KindleConfig,
+    sessionId: string,
+  ): Promise<void> {
     const sessions = await api.listSessions(controller, options.cwd)
     if (!sessions.some((entry) => entry.sessionId === sessionId)) {
       throw new HttpError(404, '这个会话不在 Kindle 工作区里。')
     }
   }
 
-  function readBody(req, limit = 512 * 1024) {
-    return new Promise((resolveBody, rejectBody) => {
-      const chunks = []
+  function readBody(req: IncomingMessage, limit = 512 * 1024): Promise<URLSearchParams> {
+    return new Promise<URLSearchParams>((resolveBody, rejectBody) => {
+      const chunks: Buffer[] = []
       let size = 0
       req.on('data', (chunk) => {
         size += chunk.length
@@ -359,17 +401,25 @@ export async function createApp(host) {
     })
   }
 
-  function renderErrorPage(status, message) {
-    return '<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><title>出错了</title>' +
-      '<style>body{font-family:serif;font-size:' + config.fontSize + 'px;padding:24px;line-height:1.6}' +
+  function renderErrorPage(status: number, message: unknown): string {
+    return (
+      '<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><title>出错了</title>' +
+      '<style>body{font-family:serif;font-size:' +
+      config.fontSize +
+      'px;padding:24px;line-height:1.6}' +
       'a{color:#0b3d91}</style>' +
-      '</head><body><h1>' + status + '</h1><p>' + escapeText(message) + '</p>' +
+      '</head><body><h1>' +
+      status +
+      '</h1><p>' +
+      escapeText(message) +
+      '</p>' +
       '<p><a href="/s">返回会话列表</a></p></body></html>'
+    )
   }
 }
 
-function sendHtml(res, status, html, extraCookie) {
-  const headers = {
+function sendHtml(res: ServerResponse, status: number, html: string, extraCookie?: string) {
+  const headers: Record<string, string | number> = {
     'content-type': 'text/html; charset=utf-8',
     'cache-control': 'no-store',
     'content-length': Buffer.byteLength(html),
@@ -379,19 +429,16 @@ function sendHtml(res, status, html, extraCookie) {
   res.end(html)
 }
 
-function redirect(res, location) {
+function redirect(res: ServerResponse, location: string) {
   res.writeHead(303, { Location: location, 'content-length': 0 })
   res.end()
 }
 
-function escapeText(value) {
-  return String(value)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
+function escapeText(value: unknown): string {
+  return String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
-function clampInt(value, min, max, fallback) {
+function clampInt(value: unknown, min: number, max: number, fallback: number): number {
   const number = Math.trunc(Number(value))
   if (!Number.isFinite(number)) return fallback
   return Math.min(max, Math.max(min, number))

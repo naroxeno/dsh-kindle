@@ -1,18 +1,86 @@
-/**
- * Page shell, styles, and the three server-rendered pages.
- *
- * Everything here targets WebKit 531/534 (Safari 4/5): no flexbox, no grid,
- * no `position: fixed`, no `fetch`, no template literals in shipped JS. The
- * only client-side script is the run-state poller and a tiny caret inserter.
- */
-// Hot reload: carry this module's own ?gen=N stamp (empty when imported
-// in place, e.g. by the tests) into every dependency, so one generation of the
-// UI never renders with another generation's math/markdown code.
 const STAMP = new URL(import.meta.url).search
 const { escapeHtml, texToSvg, convertPromptMath } = await import('./math.js' + STAMP)
 const { renderMarkdown, inline } = await import('./markdown.js' + STAMP)
 
-const PALETTE = [
+import type { KindleConfig } from './host.js'
+
+export interface UiMessage {
+  kind: 'user' | 'assistant' | 'tool'
+  text: string
+  interrupted?: boolean
+  name?: string
+  error?: boolean
+}
+
+interface ListItem {
+  sessionId: string
+  title: string
+  updatedAt?: number
+  running?: boolean
+  blank?: boolean
+}
+
+interface ShellOptions {
+  fontSize?: number
+  bodyClass?: string
+}
+
+export interface ListExtras {
+  balance?: string
+}
+
+export interface RenameView {
+  sessionId: string
+  title?: string
+}
+
+export interface DeleteView extends RenameView {
+  cwd?: string
+}
+
+export interface PreviewView {
+  sessionId: string
+  draft?: string
+}
+
+export interface UiModelChoice {
+  name?: string
+  efforts: Array<{ id: string; name?: string }>
+  current?: string
+}
+
+export interface SessionView {
+  sessionId: string
+  title?: string
+  messages: UiMessage[]
+  running?: boolean
+  hasOlder?: boolean
+  window: number
+  draft?: string
+  model?: UiModelChoice | null
+  cursor?: number
+  fresh?: boolean
+  updatedAt?: number
+  version?: string
+}
+
+export interface AccountWallet {
+  text: string
+}
+
+export interface AccountView {
+  ok?: boolean
+  reason?: string
+  wallets?: AccountWallet[]
+  bonuses?: AccountWallet[]
+  links?: { usageUrl?: string; topUpUrl?: string }
+}
+
+export interface AccountPageView {
+  account?: AccountView
+}
+
+const PALETTE: Array<[string, string]> = [
   ['分式', '$frac{ }{ }$'],
   ['根号', '$sqrt{ }$'],
   ['平方', '$x^2$'],
@@ -33,7 +101,7 @@ const PALETTE = [
   ['⇔', '$<=>$'],
 ]
 
-const STYLE = (fontSize) => `
+const STYLE = (fontSize: number): string => `
 *{box-sizing:border-box}
 html,body{margin:0;padding:0;background:#fff;color:#000}
 body{font-family:serif;font-size:${fontSize}px;line-height:1.72;padding:0 32px 64px;-webkit-text-size-adjust:100%}
@@ -118,7 +186,7 @@ button.wide{display:block;width:100%;text-align:center;font-size:0.78em;padding:
 input.mini{font-size:0.52em;padding:10px 16px;background:#f0f0f0}
 `
 
-function shell(title, body, opts = {}) {
+function shell(title: string, body: string, opts: ShellOptions = {}): string {
   const fontSize = opts.fontSize || 30
   const bodyClass = opts.bodyClass ? ` class="${opts.bodyClass}"` : ''
   return `<!DOCTYPE html>
@@ -130,7 +198,11 @@ ${body}
 </body></html>`
 }
 
-export function renderLogin(config, next, options) {
+export function renderLogin(
+  config: KindleConfig,
+  next?: string,
+  options?: { error?: boolean },
+): string {
   const failed = Boolean(options && options.error)
   const body = `
 <div class="nav"><strong>DSH · Kindle</strong></div>
@@ -146,7 +218,12 @@ ${failed ? '<p class="state">令牌不对，再试一次。</p>' : ''}
   return shell('登录', body, { fontSize: config.fontSize })
 }
 
-export function renderList(config, sessions, notice, extras = {}) {
+export function renderList(
+  config: KindleConfig,
+  sessions: ListItem[],
+  notice?: string,
+  extras: ListExtras = {},
+): string {
   const rows = sessions.length
     ? sessions
         .map((s) => {
@@ -154,7 +231,9 @@ export function renderList(config, sessions, notice, extras = {}) {
           const flags = [
             s.running ? '<span class="flag">生成中</span>' : '',
             s.blank ? '<span class="flag">空会话</span>' : '',
-          ].filter(Boolean).join('')
+          ]
+            .filter(Boolean)
+            .join('')
           const id = escapeHtml(s.sessionId)
           return `<div class="session">
   <a class="title" href="/c/${id}">${escapeHtml(s.title)}</a>
@@ -181,7 +260,7 @@ ${rows}`
   return shell('DSH Kindle', body, { fontSize: config.fontSize })
 }
 
-export function renderRename(config, view) {
+export function renderRename(config: KindleConfig, view: RenameView): string {
   const id = escapeHtml(view.sessionId)
   const body = `
 <div class="nav"><a href="/s">会话列表</a><a href="/c/${id}">‹ 返回会话</a></div>
@@ -194,7 +273,7 @@ export function renderRename(config, view) {
   return shell('改名', body, { fontSize: config.fontSize })
 }
 
-export function renderDelete(config, view) {
+export function renderDelete(config: KindleConfig, view: DeleteView): string {
   const id = escapeHtml(view.sessionId)
   const body = `
 <div class="nav"><a href="/s">会话列表</a><a href="/c/${id}">‹ 返回会话</a></div>
@@ -207,24 +286,18 @@ export function renderDelete(config, view) {
   return shell('删除会话', body, { fontSize: config.fontSize })
 }
 
-/**
- * @param {object} config
- * @param {object} view
- * @param {string} view.sessionId
- * @param {string} view.title
- * @param {Array<object>} view.messages
- * @param {boolean} view.running
- * @param {number} view.updatedAt
- * @param {boolean} view.hasOlder
- * @param {number} view.window
- */
-/** Reasoning-effort switch for the session's current model route. */
-const EFFORT_LABELS = { off: '关', low: '低', medium: '中', high: '高', max: '最大' }
+const EFFORT_LABELS: Record<string, string> = {
+  off: '关',
+  low: '低',
+  medium: '中',
+  high: '高',
+  max: '最大',
+}
 
-function modelBar(view) {
+function modelBar(view: SessionView): string {
   const model = view.model
   if (!model || !Array.isArray(model.efforts) || model.efforts.length < 2) return ''
-  const buttons = model.efforts
+  let buttons = model.efforts
     .map((effort) => {
       const active = effort.id === model.current
       const label = escapeHtml(EFFORT_LABELS[effort.id] || effort.name || effort.id)
@@ -233,8 +306,6 @@ function modelBar(view) {
         : `<button type="submit" name="effort" value="${escapeHtml(effort.id)}" class="mini">${label}</button>`
     })
     .join(' ')
-  // A deployment default can name an effort the adapter no longer lists
-  // (`reasoningEffort: max` from config). Show it rather than nothing.
   if (model.current && !model.efforts.some((effort) => effort.id === model.current)) {
     buttons += ` <button type="button" class="mini on" disabled>${escapeHtml(EFFORT_LABELS[model.current] || model.current)}</button>`
   }
@@ -243,11 +314,13 @@ function modelBar(view) {
 <form method="post" action="/c/${escapeHtml(view.sessionId)}/effort">${buttons}</form></div>`
 }
 
-/** Account readout: platform wallets plus the links to use/top up. */
-export function renderAccount(config, view) {
+export function renderAccount(config: KindleConfig, view: AccountPageView): string {
   const account = view.account || {}
   const links = account.links || {}
-  const out = [`<div class="nav"><a href="/s">‹ 列表</a><a href="/me">刷新</a></div>`, '<h1>账户</h1>']
+  const out: string[] = [
+    `<div class="nav"><a href="/s">‹ 列表</a><a href="/me">刷新</a></div>`,
+    '<h1>账户</h1>',
+  ]
 
   if (account.ok) {
     for (const wallet of account.wallets) {
@@ -265,7 +338,7 @@ export function renderAccount(config, view) {
     out.push('<p>余额暂时读不到（网络或登录状态）。</p>')
   }
 
-  const actions = []
+  const actions: string[] = []
   if (links.usageUrl) actions.push(`<a href="${escapeHtml(links.usageUrl)}">查看用量</a>`)
   if (links.topUpUrl) actions.push(`<a href="${escapeHtml(links.topUpUrl)}">去充值</a>`)
   if (actions.length) out.push(`<p class="pad">${actions.join(' · ')}</p>`)
@@ -274,20 +347,22 @@ export function renderAccount(config, view) {
   return shell('账户', out.join('\n'), { fontSize: config.fontSize })
 }
 
-export function renderMessages(config, messages) {
+export function renderMessages(config: KindleConfig, messages: UiMessage[]): string {
   const fontPx = config.fontSize
-  const parts = []
-  let tools = []
+  const parts: string[] = []
+  let tools: UiMessage[] = []
 
-  // Tool calls are the noisiest thing on the page. Group a run of them into one
-  // compact panel so the conversation keeps its shape.
   function flushTools() {
     if (!tools.length) return
-    const rows = tools.map((tool) => {
-      const snippet = tool.text.length > 160 ? tool.text.slice(0, 160) + ' …' : tool.text
-      return `<div class="toolrow"><div class="toolname">⚙ ${escapeHtml(tool.name)}${tool.error ? ' · 失败' : ''}</div><div class="toolbody${tool.error ? ' err' : ''}">${escapeHtml(snippet)}</div></div>`
-    }).join('')
-    parts.push(`<div class="msg tools"><div class="who">工具 · ${tools.length} 次</div>${rows}</div>`)
+    const rows = tools
+      .map((tool) => {
+        const snippet = tool.text.length > 160 ? tool.text.slice(0, 160) + ' …' : tool.text
+        return `<div class="toolrow"><div class="toolname">⚙ ${escapeHtml(tool.name)}${tool.error ? ' · 失败' : ''}</div><div class="toolbody${tool.error ? ' err' : ''}">${escapeHtml(snippet)}</div></div>`
+      })
+      .join('')
+    parts.push(
+      `<div class="msg tools"><div class="who">工具 · ${tools.length} 次</div>${rows}</div>`,
+    )
     tools = []
   }
 
@@ -298,17 +373,21 @@ export function renderMessages(config, messages) {
     }
     flushTools()
     if (message.kind === 'user') {
-      parts.push(`<div class="msg u"><div class="who">你</div><div class="body">${renderUserText(message.text, fontPx)}</div></div>`)
+      parts.push(
+        `<div class="msg u"><div class="who">你</div><div class="body">${renderUserText(message.text, fontPx)}</div></div>`,
+      )
     } else if (message.kind === 'assistant') {
       const tail = message.interrupted ? '<div class="hint">（已中断）</div>' : ''
-      parts.push(`<div class="msg a"><div class="who">DSH</div><div class="body">${renderMarkdown(message.text, { fontPx })}${tail}</div></div>`)
+      parts.push(
+        `<div class="msg a"><div class="who">DSH</div><div class="body">${renderMarkdown(message.text, { fontPx })}${tail}</div></div>`,
+      )
     }
   }
   flushTools()
   return parts.join('\n') || '<p class="hint">还没有内容。</p>'
 }
 
-export function renderSession(config, view) {
+export function renderSession(config: KindleConfig, view: SessionView): string {
   const older = view.hasOlder
     ? `<p class="older"><a href="/c/${escapeHtml(view.sessionId)}?n=${view.window + config.pageSize}">↑ 更早的消息</a></p>`
     : ''
@@ -364,14 +443,13 @@ ${runTail(view.sessionId, view.cursor, view.running, Boolean(view.fresh || view.
   return shell(view.title || '会话', body, { fontSize: config.fontSize, bodyClass: 'hei' })
 }
 
-/**
- * Incremental refresh: after the first full page, new messages arrive as an
- * HTML fragment and are appended in place. A full reload costs ~3.5s on the
- * device and throws away the draft, so this is the fast path; `replace` mode
- * covers the cases where the server cannot promise an append (pagination,
- * rewritten turns).
- */
-function runTail(sessionId, cursor, running, jump, fresh) {
+function runTail(
+  sessionId: string,
+  cursor?: number,
+  running?: boolean,
+  jump?: boolean,
+  fresh?: boolean,
+): string {
   const id = JSON.stringify(String(sessionId))
   const start = JSON.stringify(Number(cursor) || 0)
   const isRunning = running ? 'true' : 'false'
@@ -430,7 +508,7 @@ function runTail(sessionId, cursor, running, jump, fresh) {
 })();`
 }
 
-export function renderPreview(config, view) {
+export function renderPreview(config: KindleConfig, view: PreviewView): string {
   const fontPx = config.fontSize
   const converted = convertPromptMath(String(view.draft || ''))
   const rendered = converted.trim()
@@ -473,15 +551,15 @@ function doPreview(){document.getElementById('preview-msg').value=ta.value;docum
   return shell('预览', body, { fontSize: config.fontSize })
 }
 
-function renderUserText(text, fontPx) {
+function renderUserText(text: string, fontPx: number): string {
   const html = inline(text, fontPx)
   return html
 }
 
-function formatTime(ms) {
+function formatTime(ms?: number): string {
   if (!ms) return ''
   const d = new Date(ms)
-  const pad = (n) => (n < 10 ? '0' + n : String(n))
+  const pad = (n: number) => (n < 10 ? '0' + n : String(n))
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
