@@ -70,7 +70,10 @@
     "mathjax-full": "3.2.2"
   },
   "scripts": {
-    "test": "node test/render-test.mjs && node test/server-test.mjs && node test/hot-test.mjs && node test/browser-test.mjs",
+    "build": "node scripts/build.mjs",
+    "watch": "tsc -w -p .",
+    "check:dist": "node scripts/check-dist.mjs",
+    "test": "npm run build && npm run check:dist && node test/render-test.mjs && node test/server-test.mjs && node test/hot-test.mjs && node test/browser-test.mjs",
     "pack:check": "npm pack --dry-run"
   },
   "files": [
@@ -84,5 +87,10 @@
   ],
   "publishConfig": {
     "access": "public"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "^4.0.5",
+    "@types/node": "^26.6.6",
+    "typescript": "^7.0.2"
   }
 }
