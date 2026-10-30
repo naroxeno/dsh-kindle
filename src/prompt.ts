@@ -65,7 +65,7 @@ export async function ensureKindlePrompt(
     shared.lastError = ''
     return true
   } catch (error) {
-    shared.lastError = String((error && error.message) || error)
+    shared.lastError = String((error as { message?: unknown } | null)?.message || error)
     return false
   }
 }

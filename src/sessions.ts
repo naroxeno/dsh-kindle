@@ -128,7 +128,9 @@ const host: HostServices = {
 
 export function setHost(partial: Partial<KindleServices>) {
   const store: Record<string, unknown> = host
-  for (const key of Object.keys(partial)) store[key] = partial[key] || null
+  for (const key of Object.keys(partial) as Array<keyof KindleServices>) {
+    store[key] = partial[key] || null
+  }
 }
 
 function sessions(): SessionControllerLike {
@@ -322,11 +324,9 @@ export async function modelChoice(ctx: KindleContext, sessionId: string): Promis
 
   const info = await modelCapabilities(ctx, selection.provider, selection.model)
   const resolved = info && info.reasoning
-  const catalogEfforts = Array.isArray(reasoning && reasoning.efforts) ? reasoning.efforts : []
-  const efforts =
-    Array.isArray(resolved && resolved.efforts) && resolved.efforts.length > 0
-      ? resolved.efforts
-      : catalogEfforts
+  const catalogEfforts = reasoning && Array.isArray(reasoning.efforts) ? reasoning.efforts : []
+  const resolvedEfforts = resolved && Array.isArray(resolved.efforts) ? resolved.efforts : []
+  const efforts = resolvedEfforts.length > 0 ? resolvedEfforts : catalogEfforts
   const current =
     selection.reasoningEffort ||
     (resolved && resolved.defaultEffort) ||
@@ -371,8 +371,8 @@ async function modelCapabilities(
   try {
     const info = await llm.resolveModelInfo(provider, model)
     if (infoCache.size > 20) infoCache.clear()
-    infoCache.set(key, { at: Date.now(), value: info })
-    return info
+    infoCache.set(key, { at: Date.now(), value: info || null })
+    return info || null
   } catch (error) {
     return null
   }

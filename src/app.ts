@@ -34,12 +34,13 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
         sendHtml(res, error.status, renderErrorPage(error.status, error.message))
         return
       }
-      logger.error?.(String(error && error.stack ? error.stack : error))
+      const detail = error as { stack?: unknown } | null
+      logger.error?.(String(detail && detail.stack ? detail.stack : error))
       if (res.headersSent) {
         res.destroy()
         return
       }
-      sendHtml(res, 500, renderErrorPage(500, String((error && error.message) || error)))
+      sendHtml(res, 500, renderErrorPage(500, errorText(error)))
     }
   }
 
@@ -139,9 +140,7 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
       try {
         transcript = await sessionsApi.readTranscript(ctx, sessionId, config.cwd)
       } catch (error) {
-        logger.warn?.(
-          'kindle transcript read failed for ' + sessionId + ': ' + (error && error.message),
-        )
+        logger.warn?.('kindle transcript read failed for ' + sessionId + ': ' + errorText(error))
         transcript = {
           title: '',
           messages: [],
@@ -184,9 +183,7 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
       try {
         transcript = await sessionsApi.readTranscript(ctx, sessionId, config.cwd)
       } catch (error) {
-        logger.warn?.(
-          'kindle transcript read failed for ' + sessionId + ': ' + (error && error.message),
-        )
+        logger.warn?.('kindle transcript read failed for ' + sessionId + ': ' + errorText(error))
         transcript = {
           messages: [],
           rewriteFloor: 0,
@@ -285,12 +282,7 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
       try {
         await sessionsApi.labelFork(ctx, sessionId, forked, config.cwd)
       } catch (error) {
-        logger.error(
-          'kindle-ui: could not title fork ' +
-            forked +
-            ': ' +
-            (error && error.message ? error.message : error),
-        )
+        logger.error?.('kindle-ui: could not title fork ' + forked + ': ' + errorText(error))
       }
       redirect(res, '/c/' + encodeURIComponent(forked))
       return
@@ -314,7 +306,7 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
       try {
         await sessionsApi.archiveSession(ctx, sessionId)
       } catch (error) {
-        throw new HttpError(409, '删不掉：' + (error && error.message ? error.message : error))
+        throw new HttpError(409, '删不掉：' + errorText(error))
       }
       redirect(res, '/s')
       return
@@ -365,7 +357,7 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
       const names = model.efforts.map((entry) => entry.id).join(',')
       return model.provider + '/' + model.model + ' (' + (names || 'no reasoning') + ')'
     } catch (error) {
-      return 'unavailable: ' + (error && error.message ? error.message : error)
+      return 'unavailable: ' + errorText(error)
     }
   }
 
@@ -436,6 +428,10 @@ function redirect(res: ServerResponse, location: string) {
 
 function escapeText(value: unknown): string {
   return String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
+function errorText(error: unknown): string {
+  return String((error as { message?: unknown } | null | undefined)?.message || error)
 }
 
 function clampInt(value: unknown, min: number, max: number, fallback: number): number {
