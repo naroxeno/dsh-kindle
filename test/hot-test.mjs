@@ -72,16 +72,17 @@ const sessionController = {
       parentSessionId: s.parentSessionId, origin: s.origin,
     })) }
   },
-  async inspect(id) {
-    const s = sessionsById.get(id)
+  async events(req) {
+    const s = sessionsById.get(req.address.sessionId)
     if (!s) throw new Error('no session')
-    return { meta: { sessionId: id, cwd }, inheritedEventCount: 0, events: eventsOf() }
+    const records = eventsOf().map((event) => ({ type: 'event', event }))
+    return { cursor: 2, records, hasMore: false }
   },
   async modelCatalog() {
     return { default: { provider: 'test', model: 'test' }, routableProviders: ['test'], groups: [], failures: [] }
   },
   async projections() {
-    return { kind: 'sequenced', asOfSeq: 2, values: { modelSelection: { lastUsed: null, next: null } } }
+    return { kind: 'sequenced', asOfSeq: 2, values: { modelSelection: { lastUsed: null, pending: null } } }
   },
   async resolveAgent(id) {
     if (!agents.has(id)) agents.set(id, { id, ctx: { systemPrompt: { section: makeSection(id) } } })

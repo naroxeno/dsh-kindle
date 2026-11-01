@@ -63,10 +63,21 @@ const sessionController = {
     if (!agents.has(id)) agents.set(id, { id, ctx: { systemPrompt: { section: (s) => sections.push({ ...s, sessionId: id }) } } })
     return { agent: agents.get(id) }
   },
-  async inspect(id) {
-    const s = store.get(id)
+  async events(req) {
+    const s = store.get(req.address.sessionId)
     if (!s) throw new Error('no session')
-    return { meta: { sessionId: id, cwd }, inheritedEventCount: 0, events: s.events }
+    const end = req.beforeSeq === undefined ? s.events.length : req.beforeSeq
+    const max = Math.min(req.maxMessages === undefined ? 50 : req.maxMessages, 2)
+    let cut = 0
+    let count = 0
+    for (let i = end - 1; i >= 0; i -= 1) {
+      const event = s.events[i]
+      if (event.type !== 'user/message' && event.type !== 'assistant/message') continue
+      count += 1
+      if (count >= max) { cut = i; break }
+    }
+    const records = s.events.slice(cut, end).map((event) => ({ type: 'event', event }))
+    return { cursor: end - 1, records, hasMore: cut > 0 }
   },
   async modelCatalog() {
     return {
@@ -83,7 +94,7 @@ const sessionController = {
   async projections(req) {
     const s = store.get(req.sessionId)
     const selection = s && s.selection ? s.selection : null
-    return { kind: 'sequenced', asOfSeq: seq, values: { modelSelection: { lastUsed: null, next: selection } } }
+    return { kind: 'sequenced', asOfSeq: seq, values: { modelSelection: { lastUsed: null, pending: selection } } }
   },
   async selectModel(req) {
     const s = store.get(req.sessionId)
@@ -262,6 +273,9 @@ const badEffort = await req(`/c/${forkId}/effort`, {
   body: 'effort=nonsense',
 })
 console.log('26 effort guard ->', badEffort.status)
+
+const effortShown = (await req('/c/' + forkId, { headers: { cookie } })).text
+console.log('29 effort shown ->', /class="mini on" disabled>高</.test(effortShown))
 
 const listAfter = (await req('/s', { headers: { cookie } })).text
 console.log('28 subagent hidden ->', !listAfter.includes('sub-1'))

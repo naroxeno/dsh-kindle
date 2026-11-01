@@ -57,7 +57,11 @@ function maybeAppend() {
 
 const sessionController = {
   async list() { return { items: [session] } },
-  async inspect() { maybeAppend(); return { meta: { sessionId: id, cwd }, inheritedEventCount: 0, events: [...events] } },
+  async events() {
+    maybeAppend()
+    const records = events.map((event) => ({ type: 'event', event }))
+    return { cursor: events.length - 1, records, hasMore: false }
+  },
   async resolveAgent() { return { agent: { id, ctx: { systemPrompt: { section() {} } } } } },
   async prompt() { return { accepted: true } },
 }

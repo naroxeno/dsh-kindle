@@ -10,6 +10,7 @@ import type {
   ReasoningEffort,
   SessionControllerLike,
   SessionEvent,
+  SessionEventPage,
   SessionListItem,
   SessionMessage,
   WorkspaceControllerLike,
@@ -207,8 +208,7 @@ export async function readTranscript(
   cwd?: string,
 ): Promise<Transcript> {
   const state = await sessionState(ctx, sessionId, cwd)
-  const inspection = await sessions().inspect(sessionId, signalFor(30000))
-  const events = Array.isArray(inspection?.events) ? inspection.events : []
+  const events = await sessionEvents(sessionId)
 
   const calls = new Map<string, ToolCall>()
   for (const event of events) {
@@ -285,6 +285,51 @@ export async function readTranscript(
   }
 }
 
+const HISTORY_PAGE_MESSAGES = 200
+const HISTORY_MAX_PAGES = 50
+
+async function sessionEvents(sessionId: string): Promise<SessionEvent[]> {
+  const controller = sessions()
+  if (typeof controller.events === 'function') {
+    const pages: SessionEvent[][] = []
+    let beforeSeq: number | undefined
+    for (let count = 0; count < HISTORY_MAX_PAGES; count += 1) {
+      const page = await controller.events(
+        {
+          address: { kind: 'session', sessionId },
+          maxMessages: HISTORY_PAGE_MESSAGES,
+          beforeSeq,
+        },
+        signalFor(30000),
+      )
+      const batch = pageEvents(page)
+      if (batch.length === 0) break
+      pages.unshift(batch)
+      const oldest = Number(batch[0].seq)
+      if (page?.hasMore !== true || !Number.isFinite(oldest) || oldest <= 0) break
+      beforeSeq = oldest
+    }
+    return pages.flat()
+  }
+  if (typeof controller.inspect !== 'function') {
+    throw new Error('sessionController exposes neither events() nor inspect()')
+  }
+  const inspection = await controller.inspect(sessionId, signalFor(30000))
+  return Array.isArray(inspection?.events) ? inspection.events : []
+}
+
+function pageEvents(page: SessionEventPage | null | undefined): SessionEvent[] {
+  const records = Array.isArray(page?.records) ? page.records : []
+  const events: SessionEvent[] = []
+  for (const record of records) {
+    const event = record && record.event
+    if (event && typeof event.seq === 'number' && typeof event.type === 'string') {
+      events.push(event)
+    }
+  }
+  return events
+}
+
 function textBlocks(message: SessionMessage | null | undefined): string {
   const content = message && Array.isArray(message.content) ? message.content : []
   const parts = []
@@ -315,7 +360,8 @@ export async function modelChoice(ctx: KindleContext, sessionId: string): Promis
   try {
     const value = await sessions().projections({ sessionId }, signalFor(10000))
     const view = value && value.values ? value.values.modelSelection : null
-    if (view && view.next) selection = view.next
+    const chosen = view ? view.next || view.pending : null
+    if (chosen) selection = chosen
   } catch (error) {}
 
   const group = (catalog.groups || []).find((entry) => entry.id === selection.provider)

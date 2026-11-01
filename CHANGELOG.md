@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.3.1 — 2026-11-01
+
+适配 dsh `0.2.2-alpha.2`（`sessionController.inspect()` 已被 `events()` 取代）。
+
+- **会话页空白 / 一直“生成中”**：0.2.2 删掉了 `inspect(sessionId, signal)`，插件调用时抛
+  `inspect is not a function`，被页面兜底成「还没有内容」。现在改读
+  `events({address, beforeSeq, maxMessages}, signal)`，按 `hasMore` 向前翻页直到 seq 0；
+  老 Host 上仍然回退到 `inspect()`，0.2.1 不受影响。
+- **思考强度不跟会话走**：`modelSelection` 投影在 0.2.2 里是 `{lastUsed, pending}`（旧版是
+  `{lastUsed, next}`），插件只读 `next` 所以永远显示默认档。现在两者都认。
+- 测试：假 Host 换成 `events()` 分页接口（每页最多 2 条消息，强制走翻页）、投影换成
+  `pending`，并新增「切换档位后页面显示当前档」断言；`replay-test.mjs` 用真实日志跑分页读取，
+  顺带修好它自 M3 起没再调用 `setHost` 的问题。
+
 ## 0.3.0 — 2026-10-29
 
 热重载：改完 `lib/*.js` 或 `prompt/kindle.md` 后，下一次 HTTP 请求就用新代码，**不用重启 dsh**。

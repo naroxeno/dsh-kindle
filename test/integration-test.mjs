@@ -36,7 +36,7 @@ class FakeSessions extends Service {
   async list() { return { items } }
   async create() { return { sessionId: 'session-new' } }
   async prompt() { return { accepted: true } }
-  async inspect(id) { return { meta: { id }, events: [] } }
+  async events() { return { cursor: 0, records: [], hasMore: false } }
   async cancel() { return {} }
   async rename() { return { title: 'x', seq: 1 } }
   async fork() { return { sessionId: 'session-fork' } }
