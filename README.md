@@ -95,7 +95,7 @@ Kindle 会话会比 GUI 会话多一个系统提示词段，内容在 `bundle/pr
 
 ```bash
 curl -H 'Cookie: kd=<token>' http://192.168.10.40:8090/debug
-# kindle-ui 0.3.0
+# kindle-ui 0.3.1
 # hot: generation 1 (0 reloads, auto on)
 # {"registered":1,"lastError":"","section":"kindle:display"}
 # prompt bytes: 1066

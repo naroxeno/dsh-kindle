@@ -9,7 +9,7 @@
  */
 import { zstdDecompressSync } from 'node:zlib'
 import { readFileSync } from 'node:fs'
-import { readTranscript } from '../lib/sessions.js'
+import { readTranscript, setHost } from '../lib/sessions.js'
 import { renderSession } from '../lib/ui.js'
 
 const file = process.argv[2]
@@ -40,12 +40,27 @@ const ctx = {
         }],
       }
     },
-    async inspect() {
-      return { events }
+    async events(request) {
+      const end = request.beforeSeq === undefined ? events.length : request.beforeSeq
+      const max = request.maxMessages === undefined ? 50 : request.maxMessages
+      let cut = 0
+      let count = 0
+      for (let i = end - 1; i >= 0; i -= 1) {
+        const event = events[i]
+        if (event.type !== 'user/message' && event.type !== 'assistant/message') continue
+        count += 1
+        if (count >= max) { cut = i; break }
+      }
+      return {
+        cursor: end - 1,
+        records: events.slice(cut, end).map((event) => ({ type: 'event', event })),
+        hasMore: cut > 0,
+      }
     },
   },
 }
 
+setHost({ sessionController: ctx.sessionController })
 const transcript = await readTranscript(ctx, 'replay', cwd)
 const html = renderSession(
   { fontSize: 30, pageSize: 40 },

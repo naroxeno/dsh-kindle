@@ -43,7 +43,6 @@ export interface ModelRoute {
 
 export interface ModelSelection extends ModelRoute {
   reasoningEffort?: string
-  next?: ModelRoute
 }
 
 export interface ModelCatalogEntry {
@@ -118,6 +117,22 @@ export interface SessionEvent {
   data?: SessionEventData
 }
 
+export interface SessionAddress {
+  kind: 'session'
+  sessionId: string
+}
+
+export interface SessionEventRecord {
+  type?: string
+  event?: SessionEvent
+}
+
+export interface SessionEventPage {
+  records?: SessionEventRecord[]
+  hasMore?: boolean
+  cursor?: number
+}
+
 export interface SessionInspection {
   events?: SessionEvent[]
 }
@@ -136,8 +151,14 @@ export interface SessionProjectionView {
   reasoningEffort: string
 }
 
+export interface ModelSelectionView {
+  lastUsed?: ModelSelection | null
+  next?: ModelSelection | null
+  pending?: ModelSelection | null
+}
+
 export interface SessionProjections {
-  values?: { modelSelection?: ModelSelection | null }
+  values?: { modelSelection?: ModelSelectionView | null }
 }
 
 export interface SystemPromptSectionInput {
@@ -169,7 +190,16 @@ export interface SessionControllerLike {
   prompt(request: PromptRequest, signal?: AbortSignal): Promise<unknown>
   rename(input: { sessionId: string; title: string }): Promise<unknown>
   fork(input: { sessionId: string }): Promise<{ sessionId?: string } | null | undefined>
-  inspect(sessionId: string, signal?: AbortSignal): Promise<SessionInspection | null | undefined>
+  events?(
+    input: {
+      address: SessionAddress
+      throughSeq?: number
+      beforeSeq?: number
+      maxMessages?: number
+    },
+    signal?: AbortSignal,
+  ): Promise<SessionEventPage | null | undefined>
+  inspect?(sessionId: string, signal?: AbortSignal): Promise<SessionInspection | null | undefined>
   cancel(input: { sessionId: string }): Promise<unknown>
   modelCatalog(): Promise<ModelCatalog>
   projections(

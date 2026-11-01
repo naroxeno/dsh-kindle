@@ -2,8 +2,8 @@
 
 写给下一个接手这个项目的会话。读完这一篇就能继续干活，不需要翻历史对话。
 
-- 最后更新：2026-10-29
-- 当前版本：bundle `0.3.0`（工作副本；profile 仍链着这个目录，但跑着的进程还是启动时加载的 0.2.1 模块图，需重启一次）
+- 最后更新：2026-11-01
+- 当前版本：bundle `0.3.1`（工作副本；profile 链着这个目录，0.3.1 已通过热重载在当前 dsh 进程里生效，壳没改、不用重启）
 - 项目目录：`/home/naroxeno/main/kindle-dsh/`
 - 一句话：把 DSH 会话搬进 Kindle Paperwhite 4 的原生浏览器，服务端渲染、无前端框架、公式用 MathJax 转成内联 SVG。
 
@@ -24,7 +24,7 @@
 `/debug` 正常输出长这样（`hot:` 行报告热重载代次，后四行是关键）：
 
 ```
-kindle-ui 0.3.0
+kindle-ui 0.3.1
 hot: generation 1 (0 reloads, auto on)
 {"registered":0,"lastError":"","section":"kindle:display"}   ← 打开过会话后会变 1
 prompt bytes: 1066
@@ -78,10 +78,10 @@ curl -s -b /tmp/kd.jar http://127.0.0.1:8090/debug | head -3   # generation 应�
 ├── docs/                 截图（session/list/composer/account.png），1072×1268
 ├── spike/                阶段 0 真机自检页（历史产物，可删；server.mjs 起在 8090 会撞插件端口）
 └── bundle/               真正发布的 npm 包
-    ├── package.json      name=dsh-kindle, version 0.3.0, dsh.bundle.patch → cordis.patch.yml
+    ├── package.json      name=dsh-kindle, version 0.3.1, dsh.bundle.patch → cordis.patch.yml
     ├── cordis.patch.yml  插件默认配置（host/port/token/cwd/fontSize/pageSize/hotReload）
     ├── README.md         面向安装者：功能表、两条安装路径、配置、安全警告
-    ├── CHANGELOG.md      0.1.1 → 0.3.0 的逐条记录
+    ├── CHANGELOG.md      0.1.1 → 0.3.1 的逐条记录
     ├── LICENSE           MIT
     ├── prompt/kindle.md  按会话注入的系统提示词（478 字）
     ├── docs/             打包用的截图
@@ -141,14 +141,16 @@ Kindle 的浏览器是 2010 年的 WebKit：没有 flex/grid/fetch/Promise/class
 | --- | --- |
 | `create({cwd?, workspaceId?, sessionId?, agentPreset?})` | 返回 `{sessionId}` |
 | `list({}, signal)` | `{items: SessionSummary[]}`；`projections.values.title` 是标题，`origin==='subagent'` 才是子代理 |
-| `page({address, throughSeq, beforeSeq?, maxMessages?}, signal)` | 历史分页，`throughSeq` 必须来自 `follow` 的 cursor |
+| `events({address:{kind:'session', sessionId}, throughSeq?, beforeSeq?, maxMessages?}, signal)` | 冷读历史分页（**不激活 Agent**）——本项目的消息来源。`records[].event` 才是事件；`maxMessages` 只数 user/assistant 消息（默认 50），`hasMore` 为真时用 `beforeSeq = 本页第一条的 seq` 往回翻，直到 seq 0 |
 | `prompt({requestId, sessionId, mode:'queue'|'steer', content:[{type:'text',text}]}, signal)` | 返回 `{accepted:true}` |
 | `follow({address, ...}, signal)` | AsyncIterable，第一帧 snapshot 带 `cursor` |
-| `inspect(sessionId, signal)` | 冷读全量事件（从 seq 0），**不激活 Agent**——本项目的消息来源 |
 | `rename({sessionId, title})` / `fork({sessionId})` / `cancel({sessionId})` | fork 返回 `{sessionId}`，新会话 header 里带 `parentSession` |
 | `selectModel({sessionId, provider, model, reasoningEffort?})` | 思考强度；返回 `{selected}` |
 | `modelCatalog()` | 注意：真机默认 provider 的条目**不带 `reasoning`**，档位得问 `ctx.llm.resolveModelInfo` |
-| `projections({sessionId}, signal)` | 当前选择在 key `modelSelection`，视图 `{lastUsed, next}` |
+| `projections({sessionId}, signal)` | 当前选择在 key `modelSelection`，0.2.2 视图是 `{lastUsed, pending}`（0.2.1 是 `{lastUsed, next}`，插件两个都认） |
+
+**0.2.1 → 0.2.2 的破坏性变化**：`inspect(sessionId, signal)` 已删除，换成 `events(request, signal)`；
+`page()` 只是 `events()` 的废弃别名。插件 `sessions.ts` 优先用 `events()`，没有时回退 `inspect()`。
 
 事件形状（踩过坑）：
 
@@ -195,6 +197,8 @@ ctx.inject(['accountController'], ...)  // 余额，未登录也不影响
 | 偶发“加载错误” | WebKit 复用已关闭的 keep-alive 连接 → 响应统一 `connection: close`，`keepAliveTimeout=1000` |
 | 分叉 404 | 列表把「有 `parentSessionId` 的会话」全当子代理隐藏，而分叉会话保留 parent → 只过滤 `origin === 'subagent'`（0.2.1 修） |
 | 消息重复/缺条 | 日志被 `surfaceOp: {op:'replace', startSeq, endSeq}` 改写，读日志时要先删区间再 push |
+| 会话页空白、一直“生成中” | dsh 0.2.2 删了 `sessionController.inspect()`，插件调用抛 `inspect is not a function`，被页面兜底成空 transcript。改用 `events({address, beforeSeq, maxMessages}, signal)` 翻页（0.3.1 修） |
+| 思考强度不跟随会话 | `modelSelection` 投影 0.2.2 改叫 `{lastUsed, pending}`，旧代码只读 `next` 就永远显示默认档（0.3.1 修，两个字段都认） |
 
 ---
 
@@ -216,11 +220,10 @@ ctx.inject(['accountController'], ...)  // 余额，未登录也不影响
 2. **换 token**：当前 6 位 `kindle`，建议 `python3 -c "import secrets;print(secrets.token_hex(12))"` 写进 `/home/naroxeno/kindle-ws/.kindle-token` 并重新登录。学校内网穿透前必做。
 3. **发布**：`PACKAGING.md` 已列 12 项对照，`npm pack` 16 文件 180 KB，`npm publish --dry-run` 通过；还差用户拍板三件事——包名（`dsh-kindle` 在 npm 上未被占用）、仓库地址、署名。`dshhub` 元数据已写好。
 4. 可选：`/fonts` 诊断页；把 `spike/` 删掉或挪走（它的自检服务也占 8090）；给 `rename` 加长度/空值提示（已有 400）；分叉/删除加确认页。
-5. 可选性能：`inspect()` 每次渲染都读全量日志，会话很长（>200 条）时首屏会慢；可以先 `page()` 拿尾部再拼历史。
-6. **热重载真机验证**：当前跑着的 dsh 进程（PID 会变）启动时加载的还是 0.2.1 的旧模块图，必须在没有
-   agent 轮次时重启一次才能装上 0.3.0 的壳；重启后改 `bundle/lib/ui.js`（比如加一行注释）或
-   `prompt/kindle.md`，`curl -b /tmp/kd.jar http://127.0.0.1:8090/debug` 看 `hot: generation` 从 1 变 2，
-   再刷新 Kindle 页面确认。`test/hot-test.mjs` 已在临时副本上验证全流程，缺的是真机/真实 profile 的这一步。
+5. 可选性能：`events()` 每次渲染按 200 条/页往回翻到 seq 0，会话很长（>200 条消息）时首屏要多次读取；可以改成先只取尾部，翻页链接再按需往前读。
+6. **热重载真机验证**：2026-11-01 在真实 profile 上已验证——改 `src/` 构建后 `/debug` 的
+   `hot: generation` 从 1 变 2（无需重启 dsh），会话页随之恢复。Kindle 设备端刷新一次确认即可。
+   `test/hot-test.mjs` 继续覆盖临时副本上的全流程。
 
 ---
 
@@ -273,3 +276,4 @@ cd /home/naroxeno/main/kindle-dsh/bundle && npm pack
 - 0.2.0 打包成可发布插件（LICENSE/CHANGELOG/dshhub 元数据、干净 profile 验证）
 - 0.2.1 修分叉 404，分叉自动改名
 - 0.3.0 热重载：稳定壳 `hot.js` + 按代 `app.js`，`lib/*.js` 与 `prompt/kindle.md` 改动下一次请求生效；`/debug` 显示 generation/reloads/hot error；新增 `hot-test.mjs`
+- 0.3.1 适配 dsh 0.2.2：会话消息改走 `sessionController.events()` 分页（`inspect()` 已删，保留回退）；思考强度改读 `modelSelection.pending`

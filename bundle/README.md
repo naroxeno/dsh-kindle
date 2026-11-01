@@ -29,7 +29,7 @@ DSH 自带的 Web GUI 是 Vite + React 单页应用，在它上面打不开。
 
 ## 环境
 
-- dsh `>= 0.2.1-rc.1 < 0.3.0`
+- dsh `>= 0.2.1-rc.1 < 0.3.0`（0.2.1-rc.2、0.2.2-alpha.2 实测）
 - Node.js `>= 20`
 - 浏览器：Kindle Paperwhite（实测 KPW4 / 固件 5.14.2）；其他 WebKit 534 级别的老浏览器大概率也能用
 - 设备与 Host 在同一局域网，或你自建了内网穿透
@@ -123,7 +123,7 @@ npm run pack:check
 调试页 `/debug`（需要登录）会输出插件版本、热重载代次、提示词注册状态、余额服务与模型目录的可用性。
 
 ```
-kindle-ui 0.3.0
+kindle-ui 0.3.1
 hot: generation 1 (0 reloads, auto on)
 {"registered":1,"lastError":"","section":"kindle:display"}
 prompt bytes 1066
