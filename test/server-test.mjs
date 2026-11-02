@@ -1,3 +1,5 @@
+import assert from 'node:assert/strict'
+
 const B = new URL('../lib/', import.meta.url).href + '/'
 const { apply } = await import(B + 'index.js')
 
@@ -175,6 +177,19 @@ async function req(path, opts = {}) {
   return { status: res.status, headers: res.headers, text }
 }
 
+function checkHtmlHeaders(label, response) {
+  try {
+    assert.match(response.headers.get('content-type') || '', /^text\/html; charset=utf-8$/)
+    assert.equal(response.headers.get('cache-control'), 'no-store')
+    assert.equal(response.headers.get('connection'), 'close')
+    assert.equal(Number(response.headers.get('content-length')), Buffer.byteLength(response.text))
+    console.log('30 HTML headers ->', label, 'ok')
+  } catch (error) {
+    console.error('30 HTML headers ->', label, error.message)
+    process.exitCode = 1
+  }
+}
+
 const noauth = await req('/s')
 console.log('1 unauth /s ->', noauth.status, /需要访问令牌/.test(noauth.text))
 
@@ -184,6 +199,7 @@ const cookie = 'kd=secret'
 
 const list0 = await req('/s', { headers: { cookie } })
 console.log('3 list ->', list0.status, /还没有会话/.test(list0.text))
+checkHtmlHeaders('list page', list0)
 
 const created = await req('/new', { method: 'POST', headers: { cookie } })
 const loc = created.headers.get('location')
@@ -192,6 +208,7 @@ const id = loc.split('/').pop()
 
 const page0 = await req('/c/' + id, { headers: { cookie } })
 console.log('5 session page ->', page0.status, 'len', page0.text.length, 'textarea', /name="msg"/.test(page0.text))
+checkHtmlHeaders('session page', page0)
 
 console.log('6 prompt ->', sections.length, JSON.stringify(sections[0] && { name: sections[0].name, order: sections[0].order }), 'bytes', sections[0] ? sections[0].text.length : 0)
 
@@ -228,6 +245,7 @@ console.log('21 tail rewrite ->', tail3.mode)
 
 const renamePage = await req(`/c/${id}/rename`, { headers: { cookie } })
 console.log('13 rename page ->', renamePage.status, renamePage.text.includes('name="title"'))
+checkHtmlHeaders('rename page', renamePage)
 
 const renamed = await req(`/c/${id}/rename`, { method: 'POST', headers: { cookie, 'content-type': 'application/x-www-form-urlencoded' }, body: 'title=' + encodeURIComponent('改过的标题') })
 console.log('14 rename post ->', renamed.status, (await req('/s', { headers: { cookie } })).text.includes('改过的标题'))
@@ -239,6 +257,7 @@ console.log('15 fork ->', forked.status, forkId, listAfterFork.includes(forkId),
 
 const delPage = await req(`/c/${id}/delete`, { headers: { cookie } })
 console.log('16 delete page ->', delPage.status, delPage.text.includes('删除这个会话？'))
+checkHtmlHeaders('delete page', delPage)
 
 const deleted = await req(`/c/${id}/delete`, { method: 'POST', headers: { cookie } })
 const afterList = (await req('/s', { headers: { cookie } })).text
@@ -249,6 +268,7 @@ const listBal = (await req('/s', { headers: { cookie } })).text
 console.log('22 list balance ->', listBal.includes('余额 ¥12.34'), 'account link', listBal.includes('href="/me"'))
 
 const me = await req('/me', { headers: { cookie } })
+checkHtmlHeaders('account page', me)
 console.log('23 account page ->', me.status, 'balance', me.text.includes('¥12.34'), 'bonus', me.text.includes('¥2.00'), 'links',
   me.text.includes('https://platform.example/usage') && me.text.includes('https://platform.example/topup'))
 
