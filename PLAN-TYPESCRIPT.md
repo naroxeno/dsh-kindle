@@ -1,8 +1,8 @@
 # kindle-dsh：TypeScript 迁移方案（0.3.0 → 0.4.0）
 
-- 状态：**已审计**（2026-10-30，修订见 §0.1）；M0、M1、M2 已完成（M1 提交 497deab，M2 提交 96bcfa8）
+- 状态：**已审计**（2026-10-30，修订见 §0.1）；M0–M5 已完成（M1 497deab、M2 96bcfa8、M3 d67edc6、M4 152c254、M5 7b5a92e）；0.3.1 基线与 DSH 0.2.2 适配见 §6.2
 - 写于：2026-10-30
-- 对象：`/home/naroxeno/main/kindle-dsh/bundle`（工作副本 0.3.0；仓库已在 M0 时 git 化，tag `baseline-0.3.0`）
+- 对象：`/home/naroxeno/main/kindle-dsh/bundle`（工作副本 0.3.1；M0 时为 0.3.0，tag `baseline-0.3.0`）
 - 本文所有 `file:line` 指向当前工作副本；执行者开工前先确认这些行号还有效（用 `grep -n` 复核）
 
 ---
@@ -225,13 +225,15 @@ export interface KindleHost {
 
 1. 不含 `<script src`、`type="module"`、`import(`；
 2. 抽取每个 `<script>...</script>` 正文，断言不含 `=>`、`?.`、`??`、`let `、`const `、`` ` ``（反引号）、`async `（内联脚本必须 ES5）；
-3. 不含 `display:flex`、`display:grid`、`position:fixed`、`fetch(`、`XMLHttpRequest`；
-4. 含 `<meta name="viewport"`；CSS 全部内联在 `<style>`（无 `<link rel="stylesheet"`）；
+3. 不含 `display:flex`、`display:grid`、`position:fixed`、`fetch(`；`XMLHttpRequest` 是 WebKit 534 唯一可用的异步请求方式（会话页 `runTail` 依赖它），**允许出现**；
+4. CSS 全部内联在 `<style>`（无 `<link rel="stylesheet"`）；**不要求** `<meta name="viewport"`——0.3.x 的 `shell()` 只输出 `<meta charset="utf-8">`，加 viewport 会改变全部页面输出，超出本次迁移范围，另立项处理；
 5. 公式只落内联 `<svg`，不含 `<img`、不含 `<math`；
 6. 每个 `<form>` 都有 `method="post"` 与 `action`；无 `method="get"` 的提交按钮；
-7. 响应头断言（可在 `server-test` 里补）：`content-length` 存在、`connection: close`、`cache-control` 明确。
+7. 响应头断言（放在 `server-test`）：**只对 HTML 页面**断言 `content-length` 存在且 `cache-control` 明确；`connection: close` 由 `lib/hot.js:335` 对所有响应统一设置，断言一次即可。`/tail`、`/state`、`/debug` 的 JSON/text 是 chunked、无显式 `content-length`，不在断言范围。
 
-这 7 条逐条对应真机上的具体故障（白屏、点了没反应、连接失败、公式不显示），执行者不得删减。
+这 7 条逐条对应真机上的具体故障（白屏、点了没反应、连接失败、公式不显示），执行者不得删减。第 3、4、7 条按 2026-11-01 的 0.3.1 实现与实测响应修正，修正理由见下。
+
+**0.3.1 基线补充（2026-11-01）**：另一会话已把会话读取迁到 DSH 0.2.2 的 `sessionController.events()`（提交 `1b011e5`），`bundle/package.json` 随之为 0.3.1，`dsh.compatibility` 仍为 `>=0.2.1-rc.1 <0.3.0-0`，`dshReleases` 增加 `0.2.2-alpha.2: compatible`。0.4.0 以此提交为起点，M2/M3 的边界类型与事件分页逻辑不再重做。
 
 ---
 
@@ -303,6 +305,8 @@ export interface KindleHost {
 
 - 写 `test/compat-test.mjs`（§6.2 七条），接进 `npm test`；
 - **验收**：7 条断言全过；故意写一条违规（如临时把 `display:flex` 塞进 ui.ts）能被拦住，然后撤回。
+- **执行记录**：2026-11-02 完成，提交 `7b5a92e`。新增 `test/compat-test.mjs`（登录/列表/会话/预览/账户 5 个页面），按 §6.2 修正口径断言第 1–6 条；第 7 条在 `test/server-test.mjs` 对列表、会话、改名、删除、账户 5 个 HTML 页面断言 `content-type`、`cache-control: no-store`、`connection: close`、`content-length` 与响应体字节数一致。`npm test` 全绿。
+- **违规注入验收**：把 `lib/ui.js` 复制到 `/tmp/kindle-gate-check`，将首个 `display:block` 改成 `display:flex` 后跑 compat 门，退出码 1，报 `AssertionError: 登录: 含 display\s*:\s*flex`；仓库内文件未改，避免运行中的 hot shell 换代。
 - **回滚**：删文件、还原 `test` 脚本。
 
 ### M6 收尾（约 1 小时）
