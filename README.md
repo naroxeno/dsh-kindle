@@ -2,6 +2,9 @@
 
 给 **Kindle Paperwhite 4（固件 5.14.2）原生浏览器**用的 DeepSeek Harness 前端。
 
+> 源码在 <https://github.com/naroxeno/dsh-kindle>，插件包在 [`bundle/`](bundle/)（npm 名 `dsh-kindle`），
+> 安装与使用文档见 [`bundle/README.md`](bundle/README.md)。
+
 > 换会话/换人接手，先读 [`HANDOFF.md`](HANDOFF.md)：运行状态、代码地图、Host API、踩过的坑、待办。
 > 本文偏用户文档，HANDOFF 偏工程交接。
 

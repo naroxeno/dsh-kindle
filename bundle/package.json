@@ -17,6 +17,12 @@
   ],
   "license": "MIT",
   "author": "naroxeno",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/naroxeno/dsh-kindle.git",
+    "directory": "bundle"
+  },
+  "homepage": "https://github.com/naroxeno/dsh-kindle#readme",
   "type": "module",
   "main": "lib/index.js",
   "exports": {
