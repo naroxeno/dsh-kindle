@@ -106,6 +106,18 @@ Kindle 新建的会话会挂在「默认工作区」这个分组里，不再出�
 没赶上批量的，页面底下还有「把 N 个旧会话归组」。切目录后列表只显示新目录的会话，切回去
 就又能看见旧的。
 
+### 峰谷价签
+
+标题栏的「峰时 / 谷时」是本地算的，不发请求。原因：DSH 的账户接口只返回钱包余额，没有价格
+时段字段；`dsh-cost-meter` 插件虽然有这套逻辑（它侧栏的峰谷倒计时、切换前提醒就是），但没把
+「现在是峰还是谷」暴露给别的插件——它的设置只存在 `~/.dsh/storages/cost-meter/ledger.json`
+的 `config.peakWindows` / `config.peakHolidays` 里，对外只有给 Web 客户端用的
+`costMeter.getState()`。
+
+所以规则和节假日表都在 `src/account.ts`：工作日 9:00–12:00、14:00–18:00 算峰时，`HOLIDAYS`
+里的法定节假日算谷时（按国务院放假通知，现在收录到 2027 年，每年 11 月补下一年）。以后账户
+接口或 cost-meter 要是提供查询接口，改 `priceWindow()` 的实现即可，UI 不用动。
+
 ## 安全
 
 **这个 token 等价于 Host 的 shell 权限。** Kindle 会话里运行的 Agent 用的是你 profile 的
