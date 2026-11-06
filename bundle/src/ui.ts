@@ -58,6 +58,7 @@ export interface SessionView {
   messages: UiMessage[]
   running?: boolean
   hasOlder?: boolean
+  hasTools?: boolean
   window: number
   draft?: string
   model?: UiModelChoice | null
@@ -65,6 +66,15 @@ export interface SessionView {
   fresh?: boolean
   updatedAt?: number
   version?: string
+}
+
+export interface ToolsView {
+  sessionId: string
+  title?: string
+  tools: UiMessage[]
+  total?: number
+  limit?: number
+  updatedAt?: number
 }
 
 export interface AccountWallet {
@@ -197,6 +207,8 @@ input[type=text],input[type=password]{display:block;width:100%;height:104px;padd
 
 .msg.tools{background:#f6f6f6;border-left-color:#bbb}
 .msg.tools .who{font-size:0.8em}
+.toolsum{display:block;padding:6px 0;font-family:monospace;font-size:0.78em;color:#444;text-decoration:none}
+.toolsum:after{content:""}
 .toolrow{margin:14px 0}
 .toolname{margin-bottom:6px;font-family:monospace;font-size:0.76em;color:#333}
 .toolbody{font-family:monospace;font-size:0.72em;line-height:1.55;color:#555;white-space:pre-wrap;word-wrap:break-word}
@@ -488,13 +500,26 @@ export function renderAccount(config: KindleConfig, view: AccountPageView): stri
   return shell('账户', out.join(''), { fontSize: config.fontSize })
 }
 
-export function renderMessages(config: KindleConfig, messages: UiMessage[]): string {
+export function renderMessages(
+  config: KindleConfig,
+  messages: UiMessage[],
+  toolsHref?: string,
+): string {
   const fontPx = config.fontSize
   const parts: string[] = []
   let tools: UiMessage[] = []
 
   function flushTools() {
     if (!tools.length) return
+    if (toolsHref) {
+      const failed = tools.filter((tool) => tool.error).length
+      const label = `⚙ 工具 · ${tools.length} 次${failed ? ' · ' + failed + ' 失败' : ''}`
+      parts.push(
+        `<div class="msg tools"><a class="toolsum" href="${escapeHtml(toolsHref)}">${label} ›</a></div>`,
+      )
+      tools = []
+      return
+    }
     const rows = tools
       .map((tool) => {
         const snippet = tool.text.length > 160 ? tool.text.slice(0, 160) + ' …' : tool.text
@@ -528,6 +553,26 @@ export function renderMessages(config: KindleConfig, messages: UiMessage[]): str
   return parts.join('') || '<p class="hint">还没有内容。</p>'
 }
 
+export function renderTools(config: KindleConfig, view: ToolsView): string {
+  const id = escapeHtml(view.sessionId)
+  const count = view.tools.length
+  const total = Number(view.total) || count
+  const sub =
+    (total > count ? `最近 ${count} / 共 ${total} 条` : `${count} 条`) +
+    (formatTime(view.updatedAt) ? ' · 更新于 ' + formatTime(view.updatedAt) : '')
+  const rows = view.tools
+    .map((tool) => {
+      const body = tool.text.length > 1600 ? tool.text.slice(0, 1600) + ' …' : tool.text
+      return `<div class="toolrow"><div class="toolname">⚙ ${escapeHtml(tool.name || 'tool')}${tool.error ? ' · 失败' : ''}</div><div class="toolbody${tool.error ? ' err' : ''}">${escapeHtml(body)}</div></div>`
+    })
+    .join('')
+  const page = `
+${toolBar(`<a href="/c/${id}">‹ 会话</a>`, `<a href="/c/${id}/tools">刷新</a>`)}
+${pageHead('工具调用', sub)}
+<div class="msg tools">${rows || '<p class="hint">这段会话还没有工具调用。</p>'}</div>`
+  return shell('工具调用', page, { fontSize: config.fontSize })
+}
+
 export function renderSession(config: KindleConfig, view: SessionView): string {
   const id = escapeHtml(view.sessionId)
   const older = view.hasOlder
@@ -547,7 +592,7 @@ ${modelBar(view)}
 </tr></table>
 <div class="st" id="state"${view.running ? '' : ' style="display:none"'}>${view.running ? '正在生成……（新内容会自动追加）' : ''}</div>
 ${older}
-<div id="msgs">${renderMessages(config, view.messages)}</div>
+<div id="msgs">${renderMessages(config, view.messages, view.hasTools ? `/c/${id}/tools` : undefined)}</div>
 <div class="composer" id="composer">
   <div class="sect">输入</div>
   <p class="hint">公式用 $…$ 包起来，用 AsciiMath 语法（例：$sqrt(x^2+y^2)$、$int_0^1 f(x) dx$）。</p>

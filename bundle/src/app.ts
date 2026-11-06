@@ -3,7 +3,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import { extname, isAbsolute, resolve, sep } from 'node:path'
 import type { Generation } from './generation.js'
 import type { KindleApp, KindleConfig, KindleContext, KindleHost, ModelChoice } from './host.js'
-import type { Transcript } from './sessions.js'
+import type { Transcript, TranscriptMessage } from './sessions.js'
 
 const STAMP = new URL(import.meta.url).search
 const VERSION: string = JSON.parse(
@@ -163,7 +163,7 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
           updatedAt: Date.now(),
         }
       }
-      const visible = transcript.messages.slice(-window)
+      const visible = windowMessages(transcript.messages, window)
       const model = await modelInfo(ctx, sessionsApi, sessionId)
       sendHtml(
         res,
@@ -177,9 +177,40 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
           version: transcript.updatedAt + ':' + (transcript.running ? 1 : 0),
           fresh: url.searchParams.get('fresh') === '1',
           hasOlder: transcript.messages.length > visible.length,
+          hasTools: visible.some((message) => message.kind === 'tool'),
           cursor: visible.length ? visible[visible.length - 1].seq : 0,
           window,
           model,
+        }),
+      )
+      return
+    }
+
+    if (method === 'GET' && action === 'tools') {
+      let transcript: Transcript
+      try {
+        transcript = await sessionsApi.readTranscript(ctx, sessionId, config.cwd)
+      } catch (error) {
+        logger.warn?.('kindle transcript read failed for ' + sessionId + ': ' + errorText(error))
+        transcript = {
+          title: '',
+          messages: [],
+          rewriteFloor: 0,
+          running: true,
+          updatedAt: Date.now(),
+        }
+      }
+      const calls = transcript.messages.filter((message) => message.kind === 'tool')
+      const TOOL_PAGE = 120
+      sendHtml(
+        res,
+        200,
+        ui.renderTools(config, {
+          sessionId,
+          title: transcript.title,
+          tools: calls.slice(-TOOL_PAGE).reverse(),
+          total: calls.length,
+          updatedAt: transcript.updatedAt,
         }),
       )
       return
@@ -206,19 +237,20 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
           title: '',
         }
       }
-      const visible = transcript.messages.slice(-windowSize)
+      const visible = windowMessages(transcript.messages, windowSize)
       const cursor = visible.length ? visible[visible.length - 1].seq : 0
       const floor = Number(transcript.rewriteFloor) || 0
       const before = since > 0 ? visible.findIndex((message) => message.seq === since) : -1
       const appendable = since > 0 && before !== -1 && (floor === 0 || floor > since)
       const pending = appendable ? visible.slice(before + 1) : []
+      const toolsHref = '/c/' + encodeURIComponent(sessionId) + '/tools'
       const payload = {
         mode: appendable ? 'append' : 'replace',
         html: appendable
           ? pending.length
-            ? ui.renderMessages(config, pending)
+            ? ui.renderMessages(config, pending, toolsHref)
             : ''
-          : ui.renderMessages(config, visible),
+          : ui.renderMessages(config, visible, toolsHref),
         cursor,
         running: transcript.running ? 1 : 0,
         version: transcript.updatedAt + ':' + (transcript.running ? 1 : 0),
@@ -492,6 +524,26 @@ function escapeText(value: unknown): string {
 
 function errorText(error: unknown): string {
   return String((error as { message?: unknown } | null | undefined)?.message || error)
+}
+
+/**
+ * Picks the last `size` conversational messages plus their tool rows.
+ *
+ * Tool events used to eat the window: one busy turn could push every real
+ * message off the page. They collapse into a single link now, so only
+ * user/assistant messages count towards the page size.
+ */
+function windowMessages(messages: readonly TranscriptMessage[], size: number): TranscriptMessage[] {
+  let count = 0
+  let start = messages.length
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (messages[index].kind !== 'tool') {
+      count += 1
+      if (count > size) break
+    }
+    start = index
+  }
+  return messages.slice(start)
 }
 
 function clampInt(value: unknown, min: number, max: number, fallback: number): number {
