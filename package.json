@@ -19,8 +19,7 @@
   "author": "naroxeno",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/naroxeno/dsh-kindle.git",
-    "directory": "bundle"
+    "url": "git+https://github.com/naroxeno/dsh-kindle.git"
   },
   "homepage": "https://github.com/naroxeno/dsh-kindle#readme",
   "type": "module",
