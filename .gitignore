@@ -1,0 +1,5 @@
+node_modules/
+.dist-check/
+lib/*.js
+!lib/index.js
+!lib/hot.js
