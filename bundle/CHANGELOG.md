@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.4.0 — 2026-11-06
+
+Kindle 建的会话不再掉进 GUI 的「未分组」：建会话前先解析或注册工作区，再用 `workspaceId`
+让 Host 自己 `attachSession`。新增 `/settings` 页（默认工作区、旧会话归组）与列表页搜索框。
+兼容契约、热重载路径都没动，`npm test` 全绿。
+
+- **分组根因**：`session.create({cwd})` 只在 Host 里建会话，不会挂到任何 Workspace，GUI 因此
+  显示「未分组」。现在 `POST /new` 先 `workspaceRegistry.resolveByPath(cwd) ?? create(cwd)`，
+  再 `create({workspaceId})`；分叉沿用 Host 的 `forkWorkspace`，自动留在同一组，不用改。
+- **默认工作区**：新 `/settings` 页可填目录（支持 `~/x`）或点已有工作区切换。选择存在
+  `<config.cwd>/.kindle-settings.json` 的 `{"workspace": …}` 里——`config.cwd` 只在改配置重启
+  时变，所以文件位置稳定；之后列表、创建、归属校验、`/img` 根目录都以它为准。
+- **旧会话归组**：切到某个目录时，页面显示「N 个旧会话」；保存设置会顺手把同目录的旧会话
+  `attachSession`，也可以单独点「把 N 个旧会话归组」。
+- **搜索**：列表页加标题搜索框（子串、大小写不敏感、60 字截断）。表单仍只 POST：`POST /s`
+  收到 `q` 后 303 到 `/s?q=…`，翻页与「清除搜索」都带着 `q`。
+- **/debug** 多三行：当前工作区、workspace 服务是否注册、设置文件路径。
+- 测试：compat 增加设置页视图（7 个）；server-test 换成临时工作目录并把 workspace mock 做成
+  真实体，增加分组建会话、设置页、搜索、保存、归组 5 项检查；integration-test 增加真实
+  cordis 下「传 `workspaceId` 而不是 `cwd`、会话被挂到工作区」的检查。
+
 ## 0.3.2 — 2026-11-06
 
 界面按 Kindle 原生观感与触摸操作重做，`bundle/src/ui.ts` 基本重写。兼容契约不变

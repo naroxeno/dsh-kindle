@@ -1,6 +1,6 @@
 {
   "name": "dsh-kindle",
-  "version": "0.3.2",
+  "version": "0.4.0",
   "description": "Server-rendered web UI for DeepSeek Harness on e-readers (Kindle Paperwhite, WebKit 534): formula input with AsciiMath/LaTeX, session management, balance and reasoning-effort controls, no JavaScript framework.",
   "keywords": [
     "dsh",
@@ -38,7 +38,7 @@
   "dshhub": {
     "schemaVersion": 1,
     "displayName": "DSH for Kindle",
-    "summary": "在 Kindle 原生浏览器里用 DeepSeek Harness：服务端渲染的单页、AsciiMath 公式输入、会话管理、余额与思考强度。为 WebKit 534 级别的旧浏览器设计。",
+    "summary": "在 Kindle 原生浏览器里用 DeepSeek Harness：服务端渲染的单页、AsciiMath 公式输入、标题搜索、默认工作区分组、会话管理、余额与思考强度。为 WebKit 534 级别的旧浏览器设计。",
     "categories": [
       "Web UI",
       "阅读"

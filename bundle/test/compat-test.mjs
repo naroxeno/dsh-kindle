@@ -6,6 +6,7 @@ import {
   renderPreview,
   renderAccount,
   renderNewSession,
+  renderSettings,
 } from '../lib/ui.js'
 
 const config = { fontSize: 30, pageSize: 6 }
@@ -29,9 +30,9 @@ const views = [
       config,
       [{ sessionId: 'sess-1', title: '测试会话', updatedAt: 1700000000000, running: true }],
       '测试提示',
-      { balance: '余额 ¥12.34' },
+      { balance: '余额 ¥12.34', workspace: 'kindle-ws', query: '测试', total: 1, pages: 1 },
     ),
-    forms: false,
+    forms: true,
   },
   {
     name: '新会话',
@@ -72,6 +73,23 @@ const views = [
     name: '预览',
     html: renderPreview(config, { sessionId: 'sess-1', draft: '求 $frac{1}{2}$ 的值' }),
     formula: true,
+    forms: true,
+  },
+  {
+    name: '设置',
+    html: renderSettings(config, {
+      path: '/home/naroxeno/kindle-ws',
+      title: 'kindle-ws',
+      registered: true,
+      registryReady: true,
+      choices: [
+        { id: 'ws-1', path: '/home/naroxeno/kindle-ws', title: 'kindle-ws', current: true },
+        { id: 'ws-2', path: '/home/naroxeno/main', title: 'main' },
+      ],
+      ungrouped: 3,
+      notice: { text: '默认工作区已保存。' },
+      settingsFile: '/home/naroxeno/kindle-ws/.kindle-settings.json',
+    }),
     forms: true,
   },
   {

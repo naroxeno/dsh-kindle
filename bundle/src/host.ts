@@ -181,15 +181,26 @@ export interface AgentResolution {
   agent?: ResolvedAgent
 }
 
+/**
+ * `workspaceId` and `cwd` are mutually exclusive on the Host: passing a
+ * workspace lets the Host resolve the directory and attach the new session to
+ * that group. Passing only `cwd` creates the session outside every workspace,
+ * which is what the GUI shows as「未分组」.
+ */
+export interface SessionCreateOptions {
+  cwd?: string
+  workspaceId?: string
+  agentPreset?: string
+}
+
 export interface SessionControllerLike {
   list(
     query: Record<string, never>,
     signal?: AbortSignal,
   ): Promise<SessionListResult | null | undefined>
-  create(options: {
-    cwd?: string
-    agentPreset?: string
-  }): Promise<{ sessionId?: string } | null | undefined>
+  create(
+    options: SessionCreateOptions,
+  ): Promise<{ sessionId?: string } | null | undefined>
   prompt(request: PromptRequest, signal?: AbortSignal): Promise<unknown>
   rename(input: { sessionId: string; title: string }): Promise<unknown>
   fork(input: { sessionId: string }): Promise<{ sessionId?: string } | null | undefined>
@@ -217,8 +228,25 @@ export interface WorkspaceControllerLike {
   archiveSession(input: { sessionId: string; stopActivity?: boolean }): Promise<unknown>
 }
 
+/**
+ * The live workspace entity behind `registry.list()`. Only the parts the Kindle
+ * UI needs are declared: `sessionIds` is a getter that re-filters by the record
+ * path, and `attachSession` validates that the session's own cwd matches.
+ */
+export interface WorkspaceEntityLike {
+  id: string
+  path: string
+  title?: string
+  sessionIds?: Iterable<string>
+  attachSession?(sessionId: string): Promise<unknown>
+}
+
 export interface WorkspaceRegistryLike {
   archivedSessionIds?: Iterable<string>
+  get?(id: string): WorkspaceEntityLike | undefined
+  list?(): WorkspaceEntityLike[]
+  resolveByPath?(path: string): Promise<WorkspaceEntityLike | null | undefined>
+  create?(path: string, title?: string): Promise<WorkspaceEntityLike>
 }
 
 export interface ClientMeta {

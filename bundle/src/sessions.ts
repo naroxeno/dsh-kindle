@@ -9,11 +9,13 @@ import type {
   ModelInfo,
   ReasoningEffort,
   SessionControllerLike,
+  SessionCreateOptions,
   SessionEvent,
   SessionEventPage,
   SessionListItem,
   SessionMessage,
   WorkspaceControllerLike,
+  WorkspaceEntityLike,
   WorkspaceRegistryLike,
 } from './host.js'
 
@@ -98,15 +100,92 @@ function titleOf(item?: SessionListItem): string {
 
 export async function createSession(
   ctx: KindleContext,
-  cwd?: string,
-  agentPreset?: string,
+  options: SessionCreateOptions = {},
 ): Promise<string> {
-  const request: { cwd?: string; agentPreset?: string } = {}
-  if (cwd) request.cwd = cwd
-  if (agentPreset) request.agentPreset = agentPreset
+  // The Host rejects `workspaceId` together with `cwd`, so pick one: a
+  // workspace resolves its own path and attaches the session to the group.
+  const request: SessionCreateOptions = {}
+  if (options.workspaceId) request.workspaceId = options.workspaceId
+  else if (options.cwd) request.cwd = options.cwd
+  if (options.agentPreset) request.agentPreset = options.agentPreset
   const value = await sessions().create(request)
   if (!value || !value.sessionId) throw new Error('create() returned no sessionId')
   return String(value.sessionId)
+}
+
+/**
+ * A registered workspace as the Kindle UI needs it. `sessionIds` is a snapshot:
+ * the live entity derives it from the session cwds, and old Kindle sessions
+ * created before grouping existed are absent until `adoptWorkspaceSessions`.
+ */
+export interface WorkspaceEntry {
+  id: string
+  path: string
+  title: string
+  sessionIds: string[]
+}
+
+function toWorkspaceEntry(entity: WorkspaceEntityLike): WorkspaceEntry {
+  let sessionIds: string[] = []
+  try {
+    sessionIds = entity.sessionIds ? Array.from(entity.sessionIds).map(String) : []
+  } catch (error) {}
+  return {
+    id: String(entity.id),
+    path: String(entity.path || ''),
+    title: String(entity.title || ''),
+    sessionIds,
+  }
+}
+
+/** All registered workspaces, or null when the Host has no workspace service. */
+export async function listWorkspaces(): Promise<WorkspaceEntry[] | null> {
+  const store = host.workspaceRegistry
+  if (!store || typeof store.list !== 'function') return null
+  try {
+    const value = store.list()
+    return Array.isArray(value) ? value.map(toWorkspaceEntry) : []
+  } catch (error) {
+    return null
+  }
+}
+
+/**
+ * Returns the workspace registered for `path`, registering the directory on
+ * first use. Returns null when the Host cannot group at all; session creation
+ * then falls back to `cwd`, which the GUI shows as「未分组」.
+ */
+export async function ensureWorkspace(path: string): Promise<WorkspaceEntry | null> {
+  const store = host.workspaceRegistry
+  if (!store || typeof store.create !== 'function') return null
+  const found = typeof store.resolveByPath === 'function' ? await store.resolveByPath(path) : null
+  if (found) return toWorkspaceEntry(found)
+  return toWorkspaceEntry(await store.create(path))
+}
+
+/**
+ * Attaches sessions that live in the workspace's directory but predate it.
+ * Returns how many were newly attached; sessions already in the group are
+ * skipped, and a rejected attach (different cwd) is ignored.
+ */
+export async function adoptWorkspaceSessions(
+  workspaceId: string,
+  sessionIds: string[],
+): Promise<number> {
+  const store = host.workspaceRegistry
+  const entity = store && typeof store.get === 'function' ? store.get(workspaceId) : undefined
+  if (!entity || typeof entity.attachSession !== 'function') return 0
+  const have = new Set(toWorkspaceEntry(entity).sessionIds)
+  let adopted = 0
+  for (const sessionId of sessionIds) {
+    if (have.has(sessionId)) continue
+    try {
+      await entity.attachSession(sessionId)
+      have.add(sessionId)
+      adopted += 1
+    } catch (error) {}
+  }
+  return adopted
 }
 
 export interface AgentPresetEntry {

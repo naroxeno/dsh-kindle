@@ -30,6 +30,10 @@ export interface ListExtras {
   page?: number
   pages?: number
   total?: number
+  /** Title filter currently applied; the box is refilled from it. */
+  query?: string
+  /** Name of the workspace the list is scoped to. */
+  workspace?: string
 }
 
 export interface RenameView {
@@ -166,12 +170,23 @@ h1,h2,h3,h4{font-weight:bold;margin:0}
 
 .mode{display:block;width:100%;text-align:left;padding:22px 24px;margin:0 0 18px;border:3px solid #000;background:#fff;color:#000;font:inherit}
 .mode:active{background:#dcdcdc}
+.mode.on{border-width:6px}
 .mode .n{display:block;font-family:serif;font-size:1.02em;font-weight:bold;line-height:1.4}
-.mode .d{display:block;margin-top:10px;font-size:0.8em;line-height:1.5;color:#444}
+.mode .d{display:block;margin-top:10px;font-size:0.8em;line-height:1.5;color:#444;word-wrap:break-word}
 .mode .badge{font-size:0.72em;font-weight:normal;color:#555;border:1px solid #999;padding:1px 6px;margin-left:8px}
 .mode[disabled]{opacity:0.45}
 
 .lbl{margin:0 0 10px;font-size:0.82em;letter-spacing:0.06em;color:#555}
+.sb{padding:0 24px 16px}
+.sbar{width:100%;border-collapse:collapse;table-layout:fixed}
+.sbar td{padding:0;vertical-align:middle}
+.sbar td.b{width:168px}
+.sbar input{height:92px;font-size:0.92em}
+.sgo{display:block;width:100%;height:92px;line-height:86px;margin:0 0 0 12px;padding:0;border:3px solid #000;background:#000;color:#fff;font:inherit;font-size:0.88em}
+.sgo:active{background:#333}
+.hits{margin:14px 0 0;font-size:0.82em;color:#555}
+.hits a{text-decoration:underline}
+.alert.err{background:#fff;color:#000;border:3px solid #000}
 .modelbar{padding:18px 24px 20px;border-bottom:2px solid #ddd}
 .seg{width:100%;border-collapse:collapse;table-layout:fixed;border:2px solid #000}
 .seg td{padding:0;border-left:2px solid #000}
@@ -305,7 +320,10 @@ function fitRows(){
   var avail=vh-hd.offsetHeight-ft.offsetHeight-pad;
   if(avail<=0){return;}
   if(rows.length){
-    var each=Math.floor(avail/rows.length);
+    // Cap the stretch: a search with one hit should not turn that row into a
+    // screen-filling block. Below the cap the rows keep their natural height
+    // and the leftover space stays under the list.
+    var each=Math.min(Math.floor(avail/rows.length),200);
     if(each>0){
       for(i=0;i<rows.length;i++){
         rows[i].style.boxSizing='border-box';
@@ -390,33 +408,46 @@ export function renderList(
           return `<a class="row" href="/c/${id}"><table><tr><td class="t"><div class="ttl">${escapeHtml(s.title)}</div><div class="meta">${meta}</div></td><td class="g">›</td></tr></table></a>`
         })
         .join('')
-    : '<div class="empty"><p class="t">这里还没有会话</p><p class="hint">点下面的「＋」开一个。</p></div>'
+    : extras.query
+      ? '<div class="empty"><p class="t">没有匹配的会话</p><p class="hint">换个词，或者清掉搜索。</p></div>'
+      : '<div class="empty"><p class="t">这里还没有会话</p><p class="hint">点下面的「＋」开一个。</p></div>'
 
   // The balance lives in the top bar: it is one short wallet line, and the
   // scroll area is worth more to a session row on an e-ink screen.
   const balance = extras.balance ? `<a href="/me">${escapeHtml(extras.balance)}</a>` : ''
+  const query = extras.query || ''
+  const suffix = query ? '&q=' + encodeURIComponent(query) : ''
 
   const page = extras.page || 1
   const pages = extras.pages || 1
   const total = extras.total === undefined ? sessions.length : extras.total
-  const sub = [total ? `共 ${total} 个` : '', pages > 1 ? `第 ${page} / ${pages} 页` : '']
+  const sub = [
+    extras.workspace || '',
+    total ? `共 ${total} 个` : '',
+    page > 1 || pages > 1 ? `第 ${page} / ${pages} 页` : '',
+  ]
     .filter(Boolean)
     .join(' · ')
   const prev =
     page > 1
-      ? `<a class="dbtn" href="/s?p=${page - 1}">‹ 上一页</a>`
+      ? `<a class="dbtn" href="/s?p=${page - 1}${suffix}">‹ 上一页</a>`
       : '<span class="dbtn off">‹ 上一页</span>'
   const next =
     page < pages
-      ? `<a class="dbtn" href="/s?p=${page + 1}">下一页 ›</a>`
+      ? `<a class="dbtn" href="/s?p=${page + 1}${suffix}">下一页 ›</a>`
       : '<span class="dbtn off">下一页 ›</span>'
   const dock = `<div id="dock" class="dock"><table class="d3"><tr><td class="prev">${prev}</td><td class="mid"><a class="dbtn primary" href="/new" aria-label="新会话">＋</a></td><td class="next">${next}</td></tr></table></div>`
 
+  const hits = query
+    ? `<p class="hits">找到 ${total} 个 · <a href="/s">清除搜索</a></p>`
+    : ''
+
   const body = `
 <div id="head">
-${toolBar('<span class="brand">DSH · Kindle</span>', `${balance}<a href="/s">刷新</a>`)}
+${toolBar('<span class="brand">DSH · Kindle</span>', `${balance}<a href="/settings">设置</a><a href="/s">刷新</a>`)}
 ${pageHead('会话', sub)}
 ${notice ? `<div class="alert">${escapeHtml(notice)}</div>` : ''}
+<div class="sb"><form method="post" action="/s"><table class="sbar"><tr><td class="f"><input type="text" name="q" value="${escapeHtml(query)}" placeholder="搜索标题" autocomplete="off"></td><td class="b"><button type="submit" class="sgo">搜索</button></td></tr></table></form>${hits}</div>
 </div>
 <div id="scroll">${rows}</div>
 <div id="foot">${dock}</div>
@@ -572,6 +603,85 @@ export function renderAccount(config: KindleConfig, view: AccountPageView): stri
   out.push(usage, topUp)
   out.push('<div class="pad"><p class="hint">余额由平台账户接口读取，本机缓存两分钟。</p></div>')
   return shell('账户', out.join(''), { fontSize: config.fontSize })
+}
+
+export interface SettingsNotice {
+  text: string
+  error?: boolean
+}
+
+export interface SettingsChoice {
+  id: string
+  path: string
+  title: string
+  current?: boolean
+}
+
+export interface SettingsView {
+  path: string
+  title: string
+  registered: boolean
+  registryReady: boolean
+  choices: SettingsChoice[]
+  ungrouped: number
+  notice?: SettingsNotice
+  settingsFile?: string
+}
+
+/**
+ * The two things the Kindle UI owns: which directory new sessions land in, and
+ * whether the sessions already sitting there are grouped in the GUI.
+ */
+export function renderSettings(config: KindleConfig, view: SettingsView): string {
+  const notice = view.notice
+    ? `<div class="alert${view.notice.error ? ' err' : ''}">${escapeHtml(view.notice.text)}</div>`
+    : ''
+
+  const choices = view.choices.length
+    ? view.choices
+        .map(
+          (choice) =>
+            `<form method="post" action="/settings"><input type="hidden" name="action" value="save"><input type="hidden" name="path" value="${escapeHtml(choice.path)}"><button type="submit" class="mode${choice.current ? ' on' : ''}"><span class="n">${escapeHtml(choice.title)}${choice.current ? '<span class="badge">当前</span>' : ''}</span><span class="d">${escapeHtml(choice.path)}</span></button></form>`,
+        )
+        .join('')
+    : '<p class="hint">这个 Host 还没有注册过工作区。</p>'
+
+  const adopt = view.ungrouped
+    ? `<form method="post" action="/settings"><input type="hidden" name="action" value="adopt"><button type="submit" class="btn">把 ${view.ungrouped} 个旧会话归组</button></form><p class="hint">只动当前目录里的会话，别的组不受影响。</p>`
+    : '<p class="hint">当前工作区里的会话都已经归组了。</p>'
+
+  const registry = view.registryReady
+    ? ''
+    : '<p class="hint">这个 Host 没有挂载 workspace 服务：新会话会按目录建立，但不会出现在 GUI 的分组里。</p>'
+
+  const file = view.settingsFile
+    ? `<p class="hint">设置存在 ${escapeHtml(view.settingsFile)}</p>`
+    : ''
+
+  const body = `
+${toolBar('<a href="/s">‹ 会话</a>', '<a href="/settings">刷新</a>')}
+${pageHead('设置', '默认工作区')}
+<div class="pad">
+${notice}
+<div class="sect">当前</div>
+<p class="value">${escapeHtml(view.title)}</p>
+<p class="hint">${escapeHtml(view.path)}${view.registered ? ' · 已注册' : ' · 还没注册'}</p>
+${registry}
+<div class="sect">换成已有工作区</div>
+${choices}
+<div class="sect">其他目录</div>
+<form method="post" action="/settings">
+<input type="hidden" name="action" value="save">
+<div class="lbl">目录路径</div>
+<input type="text" name="path" value="${escapeHtml(view.path)}" autocomplete="off">
+<p class="hint">填一个已经存在的目录，也可以写 ~/xxx。保存后 Kindle 新建的会话都归到这个工作区。</p>
+<div class="stack"><button type="submit" class="btn primary">保存</button></div>
+</form>
+<div class="sect">旧会话</div>
+${adopt}
+${file}
+</div>`
+  return shell('设置', body, { fontSize: config.fontSize })
 }
 
 export function renderMessages(
