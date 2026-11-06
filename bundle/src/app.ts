@@ -250,6 +250,7 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
         'workspace: ' + activeCwd() + (settings.workspace ? ' (/settings)' : ' (config cwd)'),
         'workspaces: ' + ((await sessionsApi.listWorkspaces()) ? 'registered' : 'missing'),
         'settings file: ' + settingsFile,
+        'price: ' + account.priceWindow().label + '（' + account.priceWindow().detail + '）',
       )
       res.writeHead(200, {
         'content-type': 'text/plain; charset=utf-8',

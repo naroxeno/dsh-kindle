@@ -122,3 +122,82 @@ export function clearAccountCache() {
   cache.value = null
   cache.ttl = 0
 }
+
+/** Which DeepSeek price list applies right now. */
+export interface PriceWindow {
+  peak: boolean
+  label: string
+  detail: string
+}
+
+const BEIJING_OFFSET_MS = 8 * 60 * 60 * 1000
+const PEAK_WINDOWS: ReadonlyArray<readonly [number, number]> = [
+  [9 * 60, 12 * 60],
+  [14 * 60, 18 * 60],
+]
+
+// 2027 holidays from 国办发明电〔2026〕10号 (published 2026-11-05). Add the next
+// year's dates when the State Council publishes them (usually early November):
+// a year missing here only marks that year's holidays as peak time.
+const HOLIDAYS: ReadonlySet<string> = new Set([
+  '2027-01-01',
+  '2027-01-02',
+  '2027-01-03',
+  '2027-02-05',
+  '2027-02-06',
+  '2027-02-07',
+  '2027-02-08',
+  '2027-02-09',
+  '2027-02-10',
+  '2027-02-11',
+  '2027-02-12',
+  '2027-02-13',
+  '2027-04-03',
+  '2027-04-04',
+  '2027-04-05',
+  '2027-05-01',
+  '2027-05-02',
+  '2027-05-03',
+  '2027-05-04',
+  '2027-05-05',
+  '2027-06-09',
+  '2027-09-15',
+  '2027-10-01',
+  '2027-10-02',
+  '2027-10-03',
+  '2027-10-04',
+  '2027-10-05',
+  '2027-10-06',
+  '2027-10-07',
+])
+
+function pad2(value: number): string {
+  return value < 10 ? '0' + value : String(value)
+}
+
+/**
+ * DeepSeek bills in Beijing time: weekdays 09:00–12:00 and 14:00–18:00 are
+ * peak, and statutory holidays are idle all day. Everything else (evenings,
+ * nights, weekends, holidays) is the idle window at half price. China has no
+ * daylight saving time, so a fixed offset is exact.
+ */
+export function priceWindow(now: Date = new Date()): PriceWindow {
+  const beijing = new Date(now.getTime() + BEIJING_OFFSET_MS)
+  const day = beijing.getUTCDay()
+  const minutes = beijing.getUTCHours() * 60 + beijing.getUTCMinutes()
+  const stamp =
+    beijing.getUTCFullYear() +
+    '-' +
+    pad2(beijing.getUTCMonth() + 1) +
+    '-' +
+    pad2(beijing.getUTCDate())
+  const weekday = day >= 1 && day <= 5
+  if (weekday && !HOLIDAYS.has(stamp)) {
+    for (const [start, stop] of PEAK_WINDOWS) {
+      if (minutes >= start && minutes < stop) {
+        return { peak: true, label: '峰时', detail: '高峰价，单价是空闲时段的两倍' }
+      }
+    }
+  }
+  return { peak: false, label: '谷时', detail: '空闲价，单价是高峰时段的一半' }
+}

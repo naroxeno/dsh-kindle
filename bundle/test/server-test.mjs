@@ -391,4 +391,18 @@ const adopted = await req('/settings', {
 console.log('35 adopt old session ->', adopted.status, adopted.headers.get('location'), 'attached',
   group && group.sessionIds.includes('stray-1'), 'listed', (await req('/s', { headers: { cookie } })).text.includes('stray-1'))
 
+const { priceWindow } = await import(B + 'account.js')
+const windows = [
+  ['2026-11-06T10:00:00+08:00', true, '周五上午'],
+  ['2026-11-06T15:00:00+08:00', true, '周五下午'],
+  ['2026-11-06T12:30:00+08:00', false, '午休'],
+  ['2026-11-06T18:00:00+08:00', false, '18 点后'],
+  ['2026-11-07T10:00:00+08:00', false, '周六'],
+  ['2027-02-05T10:00:00+08:00', false, '春节'],
+]
+const priceOk = windows.every(([iso, peak]) => priceWindow(new Date(iso)).peak === peak)
+const tagPage = (await req('/s', { headers: { cookie } })).text
+console.log('36 price windows ->', priceOk, 'tag shown', tagPage.includes('谷时') || tagPage.includes('峰时'),
+  'debug', (await req('/debug', { headers: { cookie } })).text.includes('price: '))
+
 for (const d of disposers) d()
