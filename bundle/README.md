@@ -19,7 +19,7 @@ DSH 自带的 Web GUI 是 Vite + React 单页应用，在它上面打不开。
 | 功能 | 说明 |
 | --- | --- |
 | 会话列表 | 标题、时间、生成中标记；新建、进入 |
-| 对话 | 你 / DSH / 工具调用三种气泡；生成中自动追加新消息，不整页刷新 |
+| 对话 | 你 / DSH / 工具调用三种消息块（10px 色条 + 底色）；生成中自动追加新消息，不整页刷新 |
 | 公式输入 | 用 AsciiMath 写 `$sum_(i=1)^n i$`，发送时转成 LaTeX 交给模型；18 个模板键，可先"预览公式"再发 |
 | 公式显示 | 服务端 MathJax → 内联 SVG（矩阵、积分、`\tag` 编号都支持；渲染失败显示源码而不是黑块） |
 | 会话管理 | 改名、分叉、删除（归档）、分页看更早的消息 |
@@ -123,7 +123,7 @@ npm run pack:check
 调试页 `/debug`（需要登录）会输出插件版本、热重载代次、提示词注册状态、余额服务与模型目录的可用性。
 
 ```
-kindle-ui 0.3.1
+kindle-ui 0.3.2
 hot: generation 1 (0 reloads, auto on)
 {"registered":1,"lastError":"","section":"kindle:display"}
 prompt bytes 1066

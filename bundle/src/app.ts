@@ -394,19 +394,7 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
   }
 
   function renderErrorPage(status: number, message: unknown): string {
-    return (
-      '<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><title>出错了</title>' +
-      '<style>body{font-family:serif;font-size:' +
-      config.fontSize +
-      'px;padding:24px;line-height:1.6}' +
-      'a{color:#0b3d91}</style>' +
-      '</head><body><h1>' +
-      status +
-      '</h1><p>' +
-      escapeText(message) +
-      '</p>' +
-      '<p><a href="/s">返回会话列表</a></p></body></html>'
-    )
+    return ui.renderError(config, status, errorText(message))
   }
 }
 

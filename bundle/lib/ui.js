@@ -21,173 +21,246 @@ const PALETTE = [
     ['→', '$->$'],
     ['⇔', '$<=>$'],
 ];
+const SANS = '"STHeiti","Heiti SC","PingFang SC","Microsoft YaHei","Droid Sans Fallback","Noto Sans CJK SC","Source Han Sans SC","WenQuanYi Zen Hei","FZHei","SimHei",sans-serif';
 const STYLE = (fontSize) => `
 *{box-sizing:border-box}
 html,body{margin:0;padding:0;background:#fff;color:#000}
-body{font-family:serif;font-size:${fontSize}px;line-height:1.72;padding:0 32px 64px;-webkit-text-size-adjust:100%}
-a{color:#000;text-decoration:underline}
-/* Session page uses a 黑体 stack for everything except the page title. */
-.hei{font-family:"STHeiti","Heiti SC","PingFang SC","Microsoft YaHei","Droid Sans Fallback","Noto Sans CJK SC","Source Han Sans SC","WenQuanYi Zen Hei","FZHei","SimHei",sans-serif}
-.hei h1{font-family:serif}
-.hei textarea,.hei input[type=password],.hei input[type=text]{font-family:inherit}
-h1{font-size:1.12em;line-height:1.4;margin:12px 0 8px;padding-bottom:12px;border-bottom:3px solid #000}
-h2,h3,h4{font-size:1em;margin:22px 0 8px}
-p{margin:14px 0}
-ul,ol{margin:14px 0;padding-left:40px}
-li{margin:6px 0}
-hr{border:0;border-top:3px solid #ccc;margin:24px 0}
+body{font-family:${SANS};font-size:${fontSize}px;line-height:1.7;padding-bottom:96px;-webkit-text-size-adjust:100%}
+a{color:#000;text-decoration:none;outline:0}
+.hei{font-family:${SANS}}
+h1,h2,h3,h4{font-weight:bold;margin:0}
 
-/* top navigation: large tap targets, wraps instead of floating */
-.nav{padding:10px 0 4px;border-bottom:3px solid #000;margin-bottom:14px;font-family:sans-serif}
-.nav a{display:inline-block;padding:14px 18px;margin:0 10px 8px 0;border:2px solid #000;background:#f0f0f0;color:#000;text-decoration:none;font-size:0.58em;line-height:1.1}
-.nav strong{font-size:0.62em;margin-right:10px}
+.tb{width:100%;border-collapse:collapse;border-bottom:2px solid #ddd}
+.tb td{height:96px;padding:0;vertical-align:middle}
+.tb .tl{text-align:left;padding-left:12px}
+.tb .tr{text-align:right;padding-right:12px}
+.tb a{display:inline-block;padding:24px 16px;font-size:0.9em;line-height:1.2;color:#000}
+.tb .brand{display:inline-block;padding-left:12px;font-size:0.9em;font-weight:bold;letter-spacing:0.06em}
 
-/* messages: a left accent bar makes the thread scannable on e-ink */
-.msg{border:1px solid #c8c8c8;border-left:14px solid #999;padding:16px 18px;margin:22px 0}
-.msg.u{border-left-color:#000;background:#f2f2f2}
-.msg .who{font-family:sans-serif;font-size:0.54em;color:#444;letter-spacing:0.12em;margin-bottom:10px}
+.hd{padding:10px 24px 22px;border-bottom:3px solid #000}
+.hd h1{font-size:1.16em;line-height:1.35;word-wrap:break-word}
+.hd .sub{margin:8px 0 0;font-size:0.82em;color:#555}
+
+.row{display:block;border-bottom:2px solid #ddd;color:#000}
+.row table{width:100%;border-collapse:collapse}
+.row td{padding:22px 0;vertical-align:middle}
+.row td.t{padding-left:24px;padding-right:12px}
+.row td.g{width:64px;text-align:center;font-size:1.25em;color:#777}
+.row .ttl{font-family:serif;font-size:1.06em;font-weight:bold;line-height:1.42;word-wrap:break-word}
+.row .meta{margin:8px 0 0;font-size:0.85em;color:#555}
+.row .meta .n{margin-right:14px}
+.row:active{background:#eaeaea}
+.flag{display:inline-block;border:2px solid #000;background:#000;color:#fff;padding:1px 10px;font-size:1em;line-height:1.35}
+.flag.off{background:#fff;color:#000}
+
+.strip{width:100%;border-collapse:collapse;table-layout:fixed;border-bottom:2px solid #ddd}
+.strip td{padding:0;border-left:2px solid #ddd}
+.strip td:first-child{border-left:0}
+.cell{display:block;width:100%;height:96px;line-height:96px;padding:0;border:0;background:#fff;color:#000;text-align:center;font-size:0.88em;text-decoration:none}
+.cell:active{background:#e8e8e8}
+
+.lbl{margin:0 0 10px;font-size:0.82em;letter-spacing:0.06em;color:#555}
+.modelbar{padding:18px 24px 20px;border-bottom:2px solid #ddd}
+.seg{width:100%;border-collapse:collapse;table-layout:fixed;border:2px solid #000}
+.seg td{padding:0;border-left:2px solid #000}
+.seg td:first-child{border-left:0}
+.mini{display:block;width:100%;height:92px;line-height:92px;padding:0;border:0;background:#fff;color:#000;font-size:0.9em}
+.mini.on{background:#000;color:#fff}
+
+.pad{padding:24px}
+.sect{padding:26px 0 12px;font-size:0.82em;letter-spacing:0.1em;color:#555}
+.hint{margin:14px 0 0;font-size:0.86em;line-height:1.6;color:#555}
+.alert{background:#000;color:#fff;padding:22px 24px;font-size:0.9em;line-height:1.5;margin:0 0 24px}
+.empty{padding:56px 24px;text-align:center}
+.empty .t{margin:0 0 12px;font-size:1.04em}
+.value{font-size:1.45em;font-weight:bold;line-height:1.3}
+
+.btn{display:block;width:100%;height:104px;line-height:98px;margin:0;padding:0;border:3px solid #000;background:#fff;color:#000;font-size:0.94em;text-align:center;text-decoration:none}
+button.btn{line-height:98px}
+.btn:active{background:#dcdcdc}
+.btn.primary{background:#000;color:#fff}
+.btn.primary:active{background:#333}
+.stack .btn{margin-top:16px}
+
+textarea{display:block;width:100%;min-height:9em;padding:18px;border:3px solid #000;background:#fff;color:#000;font-size:1em;line-height:1.6}
+input[type=text],input[type=password]{display:block;width:100%;height:104px;padding:0 18px;border:3px solid #000;background:#fff;color:#000;font-size:1em}
+
+.msg{padding:22px 24px 24px;border-bottom:2px solid #ddd;border-left:10px solid #fff}
+.msg.u{background:#f1f1f1;border-left-color:#000}
+.msg .who{margin:0 0 14px;font-size:0.82em;letter-spacing:0.12em;color:#555}
+.msg.u .who{color:#000;font-weight:bold}
 .msg .body{overflow:hidden}
 .msg .body > *:first-child{margin-top:0}
 .msg .body > *:last-child{margin-bottom:0}
+.msg .body p{margin:16px 0}
+.msg .body h2,.msg .body h3,.msg .body h4{font-size:1.04em;line-height:1.4;margin:28px 0 12px}
+.msg .body ul,.msg .body ol{margin:16px 0;padding-left:40px}
+.msg .body li{margin:8px 0}
+.msg .body hr{border:0;border-top:3px solid #ccc;margin:28px 0}
+.msg .body blockquote{margin:20px 0;padding-left:18px;border-left:8px solid #ddd;color:#333}
+.msg .body table{border-collapse:collapse;margin:20px 0;font-size:0.84em;max-width:100%}
+.msg .body td,.msg .body th{border:2px solid #999;padding:8px 10px;vertical-align:top;word-wrap:break-word}
+.msg .body pre.code{font-family:monospace;font-size:0.74em;line-height:1.55;background:#f5f5f5;border:2px solid #ccc;padding:14px;white-space:pre-wrap;word-wrap:break-word;margin:20px 0}
+.msg .body code{font-family:monospace;font-size:0.9em;background:#eee;padding:1px 5px}
+.msg .body a{text-decoration:underline}
 
-/* tool chatter collapses into one shaded log so it does not bury the answer */
-.msg.tools{border:0;border-left:8px solid #bbb;background:#fafafa;padding:12px 16px;margin:14px 0}
-.msg.tools .who{letter-spacing:0.08em;margin-bottom:4px}
-.toolrow{margin:12px 0}
-.toolname{font-family:monospace;font-size:0.54em;color:#222;margin-bottom:4px}
-.toolbody{font-family:monospace;font-size:0.5em;line-height:1.5;color:#555;white-space:pre-wrap;word-wrap:break-word}
+.msg.tools{background:#f6f6f6;border-left-color:#bbb}
+.msg.tools .who{font-size:0.8em}
+.toolrow{margin:14px 0}
+.toolname{margin-bottom:6px;font-family:monospace;font-size:0.76em;color:#333}
+.toolbody{font-family:monospace;font-size:0.72em;line-height:1.55;color:#555;white-space:pre-wrap;word-wrap:break-word}
 .toolbody.err{color:#8a0000}
 
-/* formulas */
-.mathblock{text-align:center;margin:18px 0;overflow:hidden}
+.st{padding:20px 24px;border-bottom:2px solid #ddd;background:#f1f1f1;font-size:0.86em}
+.older{display:block;padding:24px 0;border-bottom:2px solid #ddd;text-align:center;font-size:0.86em}
+.older:active{background:#eaeaea}
+
+.mathblock{text-align:center;margin:22px 0;overflow:hidden}
 svg{max-width:100%}
-.matherr{font-family:monospace;font-size:0.58em;background:#f4f4f4;border:1px dotted #888;padding:3px 6px;word-wrap:break-word}
+.matherr{font-family:monospace;font-size:0.72em;background:#f4f4f4;border:2px dotted #888;padding:4px 8px;word-wrap:break-word}
 
-/* code */
-pre.code{font-family:monospace;font-size:0.6em;line-height:1.5;background:#f5f5f5;border:1px solid #bbb;padding:12px;white-space:pre-wrap;word-wrap:break-word;margin:16px 0}
-code{font-family:monospace;font-size:0.8em;background:#f0f0f0;padding:1px 4px;word-wrap:break-word}
-blockquote{border-left:8px solid #ddd;margin:16px 0;padding-left:16px;color:#333}
-
-/* tables: shrink and wrap rather than overflow the screen */
-table{border-collapse:collapse;margin:16px 0;font-size:0.62em;max-width:100%}
-td,th{border:1px solid #999;padding:6px 8px;vertical-align:top;word-wrap:break-word}
-
-/* composer */
-.composer{border-top:3px solid #000;margin-top:30px;padding-top:18px}
-textarea{display:block;width:100%;font-family:serif;font-size:${fontSize}px;line-height:1.55;border:3px solid #000;padding:12px;background:#fff;color:#000;min-height:9em}
-input[type=password],input[type=text]{display:block;width:100%;font-size:${fontSize}px;border:3px solid #000;padding:12px}
-button{font-family:sans-serif;font-size:0.72em;line-height:1.1;padding:18px 26px;border:2px solid #000;background:#f0f0f0;color:#000;margin:0 12px 10px 0}
-button.primary{background:#000;color:#fff}
-button.wide{display:block;width:100%;text-align:center;font-size:0.78em;padding:20px 0;margin:6px 0 10px}
-.palette{margin:14px 0 0}
-.palette button{width:15.6%;margin:0 0.8% 8px 0;padding:14px 0;font-size:0.56em;text-align:center}
-.pad{padding:12px 0}
-.older{text-align:center;font-size:0.6em;margin:6px 0 0}
-.bal{font-family:sans-serif;font-size:0.62em;margin:12px 0 0}
-.modelbar{font-family:sans-serif;font-size:0.62em;margin:12px 0 0;color:#333}
-.modelbar .label{margin-right:8px}
-.modelbar form{display:inline-block;margin:0}
-.modelbar .mini{font-size:1em;padding:9px 18px}
-.mini.on{background:#000;color:#fff;border-color:#000}
-.big{font-size:1.25em;margin:14px 0}
-.hint{font-family:sans-serif;font-size:0.58em;line-height:1.6;color:#555}
-
-/* running indicator: only rendered while a turn is live */
-.state{display:inline-block;font-family:sans-serif;font-size:0.58em;font-weight:bold;border:2px solid #000;padding:10px 14px;margin:0 0 14px;background:#fff}
-
-/* session list */
-.session{border-bottom:2px solid #ddd;padding:18px 0}
-.session a.title{display:block;font-size:1.05em;font-weight:bold;line-height:1.45;word-wrap:break-word}
-.meta{font-family:sans-serif;font-size:0.54em;color:#555;margin-top:8px}
-.meta .flag{border:2px solid #000;padding:2px 8px;margin-right:8px}
-.actions{margin-top:12px}
-.actions form{display:inline-block;margin:0}
-.mini{display:inline-block;font-family:sans-serif;font-size:0.52em;line-height:1.1;padding:10px 16px;margin:0 12px 0 0;border:2px solid #000;background:#f0f0f0;color:#000;text-decoration:none}
-input.mini{font-size:0.52em;padding:10px 16px;background:#f0f0f0}
+.composer{margin-top:40px;padding:0 24px 8px;border-top:3px solid #000}
+.palette{width:100%;border-collapse:separate;border-spacing:0;table-layout:fixed}
+.palette td{padding:5px}
+.palette button{display:block;width:100%;height:92px;padding:0;border:2px solid #000;background:#fff;color:#000;font-size:0.86em;line-height:1.15}
+.palette button:active{background:#e8e8e8}
 `;
 function shell(title, body, opts = {}) {
     const fontSize = opts.fontSize || 30;
     const bodyClass = opts.bodyClass ? ` class="${opts.bodyClass}"` : '';
     return `<!DOCTYPE html>
 <html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escapeHtml(title)}</title>
 <style>${STYLE(fontSize)}</style>
 </head><body${bodyClass}>
 ${body}
 </body></html>`;
 }
+function toolBar(left, right) {
+    return `<table class="tb"><tr><td class="tl">${left}</td><td class="tr">${right}</td></tr></table>`;
+}
+function pageHead(title, sub) {
+    return `<div class="hd"><h1>${escapeHtml(title)}</h1>${sub ? `<p class="sub">${escapeHtml(sub)}</p>` : ''}</div>`;
+}
+function paletteTable() {
+    const rows = [];
+    for (let i = 0; i < PALETTE.length; i += 4) {
+        const cells = PALETTE.slice(i, i + 4)
+            .map(([label, snippet]) => {
+            const call = escapeHtml(JSON.stringify(snippet));
+            return `<td><button type="button" onclick="ins(${call})">${escapeHtml(label)}</button></td>`;
+        })
+            .join('');
+        rows.push(`<tr>${cells}</tr>`);
+    }
+    return `<table class="palette">${rows.join('')}</table>`;
+}
+function composerScript(extra) {
+    return `
+var ta=document.getElementById('msg');
+function ins(s){
+  var a=ta.value,b=ta.selectionStart,c=ta.selectionEnd,d='';
+  if(typeof b==='number'&&typeof c==='number'){d=a.substring(0,b)+s+a.substring(c);}
+  else{d=a+s;}
+  ta.value=d;
+  try{ta.focus();if(typeof b==='number'){ta.selectionStart=ta.selectionEnd=b+s.length;}}catch(e){}
+}
+function doPreview(){document.getElementById('preview-msg').value=ta.value;document.getElementById('preview-form').submit();return false;}
+function doStop(){document.getElementById('stop-form').submit();return false;}
+${extra}`;
+}
 export function renderLogin(config, next, options) {
     const failed = Boolean(options && options.error);
     const body = `
-<div class="nav"><strong>DSH · Kindle</strong></div>
-<h1>需要访问令牌</h1>
-${failed ? '<p class="state">令牌不对，再试一次。</p>' : ''}
+${toolBar('<span class="brand">DSH · Kindle</span>', '')}
+${pageHead('需要访问令牌')}
+<div class="pad">
+${failed ? '<div class="alert">令牌不对，再试一次。</div>' : ''}
 <form method="post" action="/login">
   <input type="hidden" name="next" value="${escapeHtml(next || '/s')}">
+  <div class="lbl">令牌</div>
+  <input type="password" name="token" autocomplete="off">
   <p class="hint">在 Kindle 上输入你在电脑端配置的 token。</p>
-  <p><input type="password" name="token" autocomplete="off"></p>
-  <p><button type="submit" class="primary">进入</button></p>
+  <div class="stack"><button type="submit" class="btn primary">进入</button></div>
 </form>
-<p class="hint">省事的做法：在电脑上打开日志里打印的登录链接（带 ?t=…），把它抄成 Kindle 的地址打开一次，之后就不用再输令牌了。</p>`;
+<p class="hint">省事的做法：在电脑上打开日志里打印的登录链接（带 ?t=…），把它抄成 Kindle 的地址打开一次，之后就不用再输令牌了。</p>
+</div>`;
     return shell('登录', body, { fontSize: config.fontSize });
+}
+export function renderError(config, status, message) {
+    const body = `
+${toolBar('<a href="/s">‹ 列表</a>', '')}
+${pageHead('出错了')}
+<div class="pad">
+<p class="value">${status}</p>
+<p class="hint">${escapeHtml(message)}</p>
+<div class="stack"><a class="btn" href="/s">返回会话列表</a></div>
+</div>`;
+    return shell('出错了', body, { fontSize: config.fontSize });
 }
 export function renderList(config, sessions, notice, extras = {}) {
     const rows = sessions.length
         ? sessions
             .map((s) => {
-            const when = formatTime(s.updatedAt);
+            const id = escapeHtml(s.sessionId);
             const flags = [
                 s.running ? '<span class="flag">生成中</span>' : '',
-                s.blank ? '<span class="flag">空会话</span>' : '',
+                s.blank ? '<span class="flag off">空会话</span>' : '',
             ]
                 .filter(Boolean)
-                .join('');
-            const id = escapeHtml(s.sessionId);
-            return `<div class="session">
-  <a class="title" href="/c/${id}">${escapeHtml(s.title)}</a>
-  <div class="meta">${when} ${flags}</div>
-  <div class="actions">
-    <form method="post" action="/c/${id}/fork"><input type="submit" class="mini" value="分叉"></form>
-    <a class="mini" href="/c/${id}/rename">改名</a>
-    <a class="mini" href="/c/${id}/delete">删除</a>
-  </div>
-</div>`;
+                .join(' ');
+            const meta = [formatTime(s.updatedAt), flags].filter(Boolean).join(' ');
+            return `<a class="row" href="/c/${id}"><table><tr><td class="t"><div class="ttl">${escapeHtml(s.title)}</div><div class="meta">${meta}</div></td><td class="g">›</td></tr></table></a>`;
         })
-            .join('\n')
-        : '<p class="hint">这里还没有会话。点上面的「新会话」开一个。</p>';
+            .join('')
+        : '<div class="empty"><p class="t">这里还没有会话</p><p class="hint">点上面的「＋ 新会话」开一个。</p></div>';
     const balance = extras.balance
-        ? `<p class="bal"><a href="/me">余额 ${escapeHtml(extras.balance)}</a></p>`
+        ? `<a class="row" href="/me"><table><tr><td class="t"><div class="ttl">余额 ${escapeHtml(extras.balance)}</div></td><td class="g">›</td></tr></table></a>`
         : '';
     const body = `
-<div class="nav"><strong>DSH · Kindle</strong><a href="/s">刷新</a><a href="/me">账户</a></div>
+${toolBar('<span class="brand">DSH · Kindle</span>', '<a href="/me">账户</a><a href="/s">刷新</a>')}
+${pageHead('会话', sessions.length ? `共 ${sessions.length} 个` : '')}
+${notice ? `<div class="alert">${escapeHtml(notice)}</div>` : ''}
+<form method="post" action="/new" class="pad"><button type="submit" class="btn primary">＋ 新会话</button></form>
 ${balance}
-<form method="post" action="/new"><button type="submit" class="primary wide">＋ 新会话</button></form>
-${notice ? `<p class="state">${escapeHtml(notice)}</p>` : ''}
 ${rows}`;
     return shell('DSH Kindle', body, { fontSize: config.fontSize });
 }
 export function renderRename(config, view) {
     const id = escapeHtml(view.sessionId);
     const body = `
-<div class="nav"><a href="/s">会话列表</a><a href="/c/${id}">‹ 返回会话</a></div>
-<h1>改名</h1>
+${toolBar(`<a href="/c/${id}">‹ 返回会话</a>`, '')}
+${pageHead('改名')}
+<div class="pad">
 <form method="post" action="/c/${id}/rename">
-  <p><input type="text" name="title" value="${escapeHtml(view.title || '')}" autocomplete="off"></p>
+  <div class="lbl">会话标题</div>
+  <input type="text" name="title" value="${escapeHtml(view.title || '')}" autocomplete="off">
   <p class="hint">留空会由模型自动生成标题。改名只影响显示。</p>
-  <p><button type="submit" class="primary">保存</button> <a href="/c/${id}">取消</a></p>
-</form>`;
+  <div class="stack">
+    <button type="submit" class="btn primary">保存</button>
+    <a class="btn" href="/c/${id}">取消</a>
+  </div>
+</form>
+</div>`;
     return shell('改名', body, { fontSize: config.fontSize });
 }
 export function renderDelete(config, view) {
     const id = escapeHtml(view.sessionId);
     const body = `
-<div class="nav"><a href="/s">会话列表</a><a href="/c/${id}">‹ 返回会话</a></div>
-<h1>删除这个会话？</h1>
-<p>${escapeHtml(view.title || '（未命名会话）')}</p>
-<p class="hint">会话会从 Kindle 列表里移除，文件仍保留在 ${escapeHtml(view.cwd || '')} 下，电脑端可以找回。正在生成的会话要先停止。</p>
-<form method="post" action="/c/${id}/delete">
-  <p><button type="submit" class="primary">删除</button> <a href="/c/${id}">取消</a></p>
-</form>`;
+${toolBar(`<a href="/c/${id}">‹ 返回会话</a>`, '')}
+${pageHead('删除这个会话？')}
+<div class="pad">
+  <div class="lbl">会话</div>
+  <div class="value">${escapeHtml(view.title || '（未命名会话）')}</div>
+  <p class="hint">会话会从 Kindle 列表里移除，文件仍保留在 ${escapeHtml(view.cwd || '')} 下，电脑端可以找回。正在生成的会话要先停止。</p>
+  <form method="post" action="/c/${id}/delete">
+    <div class="stack">
+      <button type="submit" class="btn primary">删除</button>
+      <a class="btn" href="/c/${id}">取消</a>
+    </div>
+  </form>
+</div>`;
     return shell('删除会话', body, { fontSize: config.fontSize });
 }
 const EFFORT_LABELS = {
@@ -201,32 +274,38 @@ function modelBar(view) {
     const model = view.model;
     if (!model || !Array.isArray(model.efforts) || model.efforts.length < 2)
         return '';
-    let buttons = model.efforts
-        .map((effort) => {
-        const active = effort.id === model.current;
-        const label = escapeHtml(EFFORT_LABELS[effort.id] || effort.name || effort.id);
-        return active
-            ? `<button type="button" class="mini on" disabled>${label}</button>`
-            : `<button type="submit" name="effort" value="${escapeHtml(effort.id)}" class="mini">${label}</button>`;
-    })
-        .join(' ');
-    if (model.current && !model.efforts.some((effort) => effort.id === model.current)) {
-        buttons += ` <button type="button" class="mini on" disabled>${escapeHtml(EFFORT_LABELS[model.current] || model.current)}</button>`;
+    const action = `/c/${escapeHtml(view.sessionId)}/effort`;
+    const choices = model.efforts.map((effort) => ({
+        id: effort.id,
+        label: EFFORT_LABELS[effort.id] || effort.name || effort.id,
+    }));
+    if (model.current && !choices.some((choice) => choice.id === model.current)) {
+        choices.push({ id: model.current, label: EFFORT_LABELS[model.current] || model.current });
     }
+    const cells = choices
+        .map((choice) => {
+        const label = escapeHtml(choice.label);
+        const button = choice.id === model.current
+            ? `<button type="button" class="mini on" disabled>${label}</button>`
+            : `<button type="submit" name="effort" value="${escapeHtml(choice.id)}" class="mini">${label}</button>`;
+        return `<td><form method="post" action="${action}">${button}</form></td>`;
+    })
+        .join('');
     const title = model.name ? ` title="${escapeHtml(model.name)}"` : '';
-    return `<div class="modelbar"${title}><span class="label">思考</span>
-<form method="post" action="/c/${escapeHtml(view.sessionId)}/effort">${buttons}</form></div>`;
+    return `<div class="modelbar"${title}><div class="lbl">思考强度</div><table class="seg"><tr>${cells}</tr></table></div>`;
 }
 export function renderAccount(config, view) {
     const account = view.account || {};
     const links = account.links || {};
     const out = [
-        `<div class="nav"><a href="/s">‹ 列表</a><a href="/me">刷新</a></div>`,
-        '<h1>账户</h1>',
+        toolBar('<a href="/s">‹ 列表</a>', '<a href="/me">刷新</a>'),
+        pageHead('账户'),
+        '<div class="pad">',
     ];
     if (account.ok) {
         for (const wallet of account.wallets || []) {
-            out.push(`<p class="big">余额 <strong>${escapeHtml(wallet.text)}</strong></p>`);
+            out.push('<div class="lbl">余额</div>');
+            out.push(`<div class="value">${escapeHtml(wallet.text)}</div>`);
         }
         if (account.bonuses && account.bonuses.length) {
             const text = account.bonuses.map((wallet) => wallet.text).join(' / ');
@@ -242,15 +321,16 @@ export function renderAccount(config, view) {
     else {
         out.push('<p>余额暂时读不到（网络或登录状态）。</p>');
     }
-    const actions = [];
-    if (links.usageUrl)
-        actions.push(`<a href="${escapeHtml(links.usageUrl)}">查看用量</a>`);
-    if (links.topUpUrl)
-        actions.push(`<a href="${escapeHtml(links.topUpUrl)}">去充值</a>`);
-    if (actions.length)
-        out.push(`<p class="pad">${actions.join(' · ')}</p>`);
-    out.push('<p class="hint">余额由平台账户接口读取，本机缓存两分钟。</p>');
-    return shell('账户', out.join('\n'), { fontSize: config.fontSize });
+    out.push('</div>');
+    const usage = links.usageUrl
+        ? `<a class="row" href="${escapeHtml(links.usageUrl)}"><table><tr><td class="t"><div class="ttl">查看用量</div></td><td class="g">›</td></tr></table></a>`
+        : '';
+    const topUp = links.topUpUrl
+        ? `<a class="row" href="${escapeHtml(links.topUpUrl)}"><table><tr><td class="t"><div class="ttl">去充值</div></td><td class="g">›</td></tr></table></a>`
+        : '';
+    out.push(usage, topUp);
+    out.push('<div class="pad"><p class="hint">余额由平台账户接口读取，本机缓存两分钟。</p></div>');
+    return shell('账户', out.join(''), { fontSize: config.fontSize });
 }
 export function renderMessages(config, messages) {
     const fontPx = config.fontSize;
@@ -276,66 +356,55 @@ export function renderMessages(config, messages) {
         }
         flushTools();
         if (message.kind === 'user') {
-            parts.push(`<div class="msg u"><div class="who">你</div><div class="body">${renderUserText(message.text, fontPx)}</div></div>`);
+            parts.push(`<div class="msg u"><div class="who">你</div><div class="body">${inline(message.text, fontPx)}</div></div>`);
         }
         else if (message.kind === 'assistant') {
-            const tail = message.interrupted ? '<div class="hint">（已中断）</div>' : '';
+            const tail = message.interrupted ? '<p class="hint">（已中断）</p>' : '';
             parts.push(`<div class="msg a"><div class="who">DSH</div><div class="body">${renderMarkdown(message.text, { fontPx })}${tail}</div></div>`);
         }
     }
     flushTools();
-    return parts.join('\n') || '<p class="hint">还没有内容。</p>';
+    return parts.join('') || '<p class="hint">还没有内容。</p>';
 }
 export function renderSession(config, view) {
+    const id = escapeHtml(view.sessionId);
     const older = view.hasOlder
-        ? `<p class="older"><a href="/c/${escapeHtml(view.sessionId)}?n=${view.window + config.pageSize}">↑ 更早的消息</a></p>`
+        ? `<a class="older" href="/c/${id}?n=${view.window + config.pageSize}">↑ 更早的消息</a>`
         : '';
-    const palette = PALETTE.map(([label, snippet]) => {
-        return `<button type="button" onclick="ins('${snippet.replace(/'/g, "\\'")}')">${escapeHtml(label)}</button>`;
-    }).join('');
+    const stop = view.running ? '' : ' style="display:none"';
     const body = `
-<div class="nav">
-  <a href="/s">‹ 列表</a>
-  <a href="/c/${escapeHtml(view.sessionId)}">刷新</a>
-  <a href="/c/${escapeHtml(view.sessionId)}/rename">改名</a>
-  <a href="/c/${escapeHtml(view.sessionId)}/delete">删除</a>
-  <a href="#composer">✎ 输入</a>
-</div>
-<h1>${escapeHtml(view.title || '会话')}</h1>
+${toolBar(`<a href="/s">‹ 列表</a>`, `<a href="/c/${id}">刷新</a>`)}
+${pageHead(view.title || '会话', formatTime(view.updatedAt) ? `更新于 ${formatTime(view.updatedAt)}` : '')}
 ${modelBar(view)}
-<p class="state" id="state" style="${view.running ? '' : 'display:none'}">${view.running ? '生成中……（新内容会自动追加）' : ''}</p>
+<table class="strip"><tr>
+  <td><form method="post" action="/c/${id}/fork"><button type="submit" class="cell">分叉</button></form></td>
+  <td><a class="cell" href="/c/${id}/rename">改名</a></td>
+  <td><a class="cell" href="/c/${id}/delete">删除</a></td>
+  <td><a class="cell" href="#composer">✎ 输入</a></td>
+</tr></table>
+<div class="st" id="state"${view.running ? '' : ' style="display:none"'}>${view.running ? '正在生成……（新内容会自动追加）' : ''}</div>
 ${older}
 <div id="msgs">${renderMessages(config, view.messages)}</div>
 <div class="composer" id="composer">
-  <form method="post" action="/c/${escapeHtml(view.sessionId)}/send">
-    <p class="hint">公式用 $…$ 包起来，用 AsciiMath 语法（例：$sqrt(x^2+y^2)$、$int_0^1 f(x) dx$）。</p>
+  <div class="sect">输入</div>
+  <p class="hint">公式用 $…$ 包起来，用 AsciiMath 语法（例：$sqrt(x^2+y^2)$、$int_0^1 f(x) dx$）。</p>
+  <form method="post" action="/c/${id}/send">
     <textarea id="msg" name="msg" rows="7">${escapeHtml(view.draft || '')}</textarea>
-    <div class="pad">
-      <button type="submit" class="primary">发送</button>
-      <button type="button" onclick="return doPreview()">预览公式</button>
-      <button type="button" id="stopbtn" onclick="return doStop()" style="${view.running ? '' : 'display:none'}">停止生成</button>
+    <div class="stack">
+      <button type="submit" class="btn primary">发送</button>
+      <button type="button" class="btn" onclick="return doPreview()">预览公式</button>
+      <button type="button" class="btn" id="stopbtn" onclick="return doStop()"${stop}>停止生成</button>
     </div>
   </form>
-  <div class="palette">${palette}</div>
-  <form id="preview-form" method="post" action="/c/${escapeHtml(view.sessionId)}/preview" style="display:none">
+  <div class="sect">公式</div>
+  ${paletteTable()}
+  <form id="preview-form" method="post" action="/c/${id}/preview" style="display:none">
     <input type="hidden" name="msg" id="preview-msg">
   </form>
-  <form id="stop-form" method="post" action="/c/${escapeHtml(view.sessionId)}/stop" style="display:none"></form>
+  <form id="stop-form" method="post" action="/c/${id}/stop" style="display:none"></form>
 </div>
 
-<script>
-var ta=document.getElementById('msg');
-function ins(s){
-  var a=ta.value,b=ta.selectionStart,c=ta.selectionEnd,d='';
-  if(typeof b==='number'&&typeof c==='number'){d=a.substring(0,b)+s+a.substring(c);}
-  else{d=a+s;}
-  ta.value=d;
-  try{ta.focus();if(typeof b==='number'){ta.selectionStart=ta.selectionEnd=b+s.length;}}catch(e){}
-}
-function doPreview(){document.getElementById('preview-msg').value=ta.value;document.getElementById('preview-form').submit();return false;}
-function doStop(){document.getElementById('stop-form').submit();return false;}
-${runTail(view.sessionId, view.cursor, view.running, Boolean(view.fresh || view.running), Boolean(view.fresh))}
-</script>`;
+<script>${composerScript(runTail(view.sessionId, view.cursor, view.running, Boolean(view.fresh || view.running), Boolean(view.fresh)))}</script>`;
     return shell(view.title || '会话', body, { fontSize: config.fontSize, bodyClass: 'hei' });
 }
 function runTail(sessionId, cursor, running, jump, fresh) {
@@ -382,13 +451,11 @@ function runTail(sessionId, cursor, running, jump, fresh) {
       apply(d);
       cursor=d.cursor;
       running=d.running===1;
-      setState(running?'生成中……（内容会自动追加）':'');
+      setState(running?'正在生成……（新内容会自动追加）':'');
       var btn=byId('stopbtn');
       if(btn){btn.style.display=running?'':'none';}
       if(running){idle=0;setTimeout(tick,3000);return;}
       idle++;
-      // Right after a send the turn may not be flagged yet, so keep a short
-      // interval for a while before settling into the slow idle poll.
       if(idle<25){setTimeout(tick,(fresh&&idle<=12)?4000:15000);}
     };
     x.send(null);
@@ -402,43 +469,30 @@ export function renderPreview(config, view) {
     const rendered = converted.trim()
         ? inline(converted, fontPx)
         : '<span class="hint">（还没有内容）</span>';
-    const palette = PALETTE.map(([label, snippet]) => {
-        return `<button type="button" onclick="ins('${snippet.replace(/'/g, "\\'")}')">${escapeHtml(label)}</button>`;
-    }).join('');
+    const id = escapeHtml(view.sessionId);
     const body = `
-<div class="nav"><a href="/c/${escapeHtml(view.sessionId)}">‹ 返回会话</a><strong>公式预览</strong></div>
-<h1>预览</h1>
+${toolBar(`<a href="/c/${id}">‹ 返回会话</a>`, '')}
+${pageHead('预览')}
 <div class="msg a"><div class="who">渲染结果</div><div class="body">${rendered}</div></div>
 <div class="composer">
-  <form method="post" action="/c/${escapeHtml(view.sessionId)}/send">
-    <p class="hint">确认无误后直接发送；也可以修改后再次预览。</p>
+  <div class="sect">输入</div>
+  <p class="hint">确认无误后直接发送；也可以修改后再次预览。</p>
+  <form method="post" action="/c/${id}/send">
     <textarea id="msg" name="msg" rows="7">${escapeHtml(view.draft || '')}</textarea>
-    <div class="pad">
-      <button type="submit" class="primary">发送</button>
-      <button type="button" onclick="return doPreview()">再次预览</button>
+    <div class="stack">
+      <button type="submit" class="btn primary">发送</button>
+      <button type="button" class="btn" onclick="return doPreview()">再次预览</button>
     </div>
   </form>
-  <div class="palette">${palette}</div>
-  <form id="preview-form" method="post" action="/c/${escapeHtml(view.sessionId)}/preview" style="display:none">
+  <div class="sect">公式</div>
+  ${paletteTable()}
+  <form id="preview-form" method="post" action="/c/${id}/preview" style="display:none">
     <input type="hidden" name="msg" id="preview-msg">
   </form>
 </div>
-<script>
-var ta=document.getElementById('msg');
-function ins(s){
-  var a=ta.value,b=ta.selectionStart,c=ta.selectionEnd,d='';
-  if(typeof b==='number'&&typeof c==='number'){d=a.substring(0,b)+s+a.substring(c);}
-  else{d=a+s;}
-  ta.value=d;
-  try{ta.focus();if(typeof b==='number'){ta.selectionStart=ta.selectionEnd=b+s.length;}}catch(e){}
-}
-function doPreview(){document.getElementById('preview-msg').value=ta.value;document.getElementById('preview-form').submit();return false;}
-</script>`;
+
+<script>${composerScript('')}</script>`;
     return shell('预览', body, { fontSize: config.fontSize });
-}
-function renderUserText(text, fontPx) {
-    const html = inline(text, fontPx);
-    return html;
 }
 function formatTime(ms) {
     if (!ms)

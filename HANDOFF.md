@@ -2,8 +2,8 @@
 
 写给下一个接手这个项目的会话。读完这一篇就能继续干活，不需要翻历史对话。
 
-- 最后更新：2026-11-01
-- 当前版本：bundle `0.3.1`（工作副本；profile 链着这个目录，0.3.1 已通过热重载在当前 dsh 进程里生效，壳没改、不用重启）
+- 最后更新：2026-11-06
+- 当前版本：bundle `0.3.2`（工作副本；profile 链着这个目录，界面改动走热重载，改完下一次请求生效）
 - 项目目录：`/home/naroxeno/main/kindle-dsh/`
 - 一句话：把 DSH 会话搬进 Kindle Paperwhite 4 的原生浏览器，服务端渲染、无前端框架、公式用 MathJax 转成内联 SVG。
 
@@ -24,7 +24,7 @@
 `/debug` 正常输出长这样（`hot:` 行报告热重载代次，后四行是关键）：
 
 ```
-kindle-ui 0.3.1
+kindle-ui 0.3.2
 hot: generation 1 (0 reloads, auto on)
 {"registered":0,"lastError":"","section":"kindle:display"}   ← 打开过会话后会变 1
 prompt bytes: 1066
@@ -78,10 +78,10 @@ curl -s -b /tmp/kd.jar http://127.0.0.1:8090/debug | head -3   # generation 应�
 ├── docs/                 截图（session/list/composer/account.png），1072×1268
 ├── spike/                阶段 0 真机自检页（历史产物，可删；server.mjs 起在 8090 会撞插件端口）
 └── bundle/               真正发布的 npm 包
-    ├── package.json      name=dsh-kindle, version 0.3.1, dsh.bundle.patch → cordis.patch.yml
+    ├── package.json      name=dsh-kindle, version 0.3.2, dsh.bundle.patch → cordis.patch.yml
     ├── cordis.patch.yml  插件默认配置（host/port/token/cwd/fontSize/pageSize/hotReload）
     ├── README.md         面向安装者：功能表、两条安装路径、配置、安全警告
-    ├── CHANGELOG.md      0.1.1 → 0.3.1 的逐条记录
+    ├── CHANGELOG.md      0.1.1 → 0.3.2 的逐条记录
     ├── LICENSE           MIT
     ├── prompt/kindle.md  按会话注入的系统提示词（478 字）
     ├── docs/             打包用的截图
@@ -277,3 +277,4 @@ cd /home/naroxeno/main/kindle-dsh/bundle && npm pack
 - 0.2.1 修分叉 404，分叉自动改名
 - 0.3.0 热重载：稳定壳 `hot.js` + 按代 `app.js`，`lib/*.js` 与 `prompt/kindle.md` 改动下一次请求生效；`/debug` 显示 generation/reloads/hot error；新增 `hot-test.mjs`
 - 0.3.1 适配 dsh 0.2.2：会话消息改走 `sessionController.events()` 分页（`inspect()` 已删，保留回退）；思考强度改读 `modelSelection.pending`
+- 0.3.2 界面按 Kindle 原生重做：触摸目标 90–110px、图书馆式列表、双层页头、分段控件、4 列公式盘，`ui.renderError` 统一错误页
