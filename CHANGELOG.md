@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.3.2 — 2026-11-06
+
+界面按 Kindle 原生观感与触摸操作重做，`bundle/src/ui.ts` 基本重写。兼容契约不变
+（无 `display:flex`/`grid`/`position:fixed`、内联脚本只用 ES5、表单只 POST），`npm test` 全绿。
+
+- **触摸尺寸**：1 CSS px = 1 物理 px @300ppi，旧版 40–60px 的按钮只有 3–4mm 高。交互件改为
+  90–110px；UI 标签从 0.5em（≈4pt）提到不小于 0.82em。
+- **列表页**：整行 `<a class="row">` + `›` 箭头，标题 serif、时间与徽标下一行；行内的
+  「分叉 / 改名 / 删除」小按钮撤掉，操作统一收到会话页动作条。
+- **会话页**：双层页头（工具条 + 页标题）、4 格动作条（分叉 / 改名 / 删除 / ✎ 输入，跳到
+  `#composer`）、思考强度改成分段控件 `关 / 低 / 高 / 最大`（每格独立 `form`）。
+- **消息**：1px 描边改 10px 色条 + 底色（u 黑条灰底、a 白条、tools 灰条），Markdown 样式
+  收进 `.msg .body`。
+- **输入区**：整行大按钮（发送 / 预览公式 / 停止生成，104px 高）；公式盘 6 列 0.56em →
+  4 列 0.86em、每键 92px。
+- **错误页**：新增 `ui.renderError()`，`app.ts` 的 `renderErrorPage` 改为调用它，替换掉原来的
+  内联极简 HTML。
+- 文档：`docs/` 截图重拍（新增 preview）；README 排版一节重写。
+
 ## 0.3.1 — 2026-11-01
 
 适配 dsh `0.2.2-alpha.2`（`sessionController.inspect()` 已被 `events()` 取代）。
