@@ -148,6 +148,11 @@ function pad2(value) {
  * peak, and statutory holidays are idle all day. Everything else (evenings,
  * nights, weekends, holidays) is the idle window at half price. China has no
  * daylight saving time, so a fixed offset is exact.
+ *
+ * Computed locally because nothing on the host exposes the current window: the
+ * DSH account controller only returns wallets, and dsh-cost-meter keeps its own
+ * peak schedule (UTC-hour windows plus holiday dates) inside ledger.json, with
+ * no query API for other plugins. Move this to their API if one ever appears.
  */
 export function priceWindow(now = new Date()) {
     const beijing = new Date(now.getTime() + BEIJING_OFFSET_MS);
