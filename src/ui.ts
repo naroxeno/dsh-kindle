@@ -296,7 +296,10 @@ function fitRows(){
   var rows=sc.getElementsByTagName('a'),i;
   for(i=0;i<rows.length;i++){rows[i].style.height='';}
   sc.style.minHeight='';
-  var vh=document.documentElement.clientHeight||window.innerHeight||0;
+  // The Kindle browser spends about a fifteenth of the screen on its address
+  // bar, and reports a viewport that still counts it. Reserve that strip so
+  // the dock stays reachable instead of hiding under the bar.
+  var vh=Math.floor((document.documentElement.clientHeight||window.innerHeight||0)*14/15);
   var cs=window.getComputedStyle?window.getComputedStyle(sc,null):null;
   var pad=cs?(parseFloat(cs.paddingBottom)||0):0;
   var avail=vh-hd.offsetHeight-ft.offsetHeight-pad;
