@@ -112,6 +112,7 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
         'delete (workspace services): ' + (services.workspaceController ? 'ready' : 'missing'),
         'account (balance): ' + (services.accountController ? 'ready' : 'missing'),
         'model catalog: ' + (await catalogLine(ctx)),
+        'agent presets: ' + (await presetLine(ctx)),
       )
       res.writeHead(200, {
         'content-type': 'text/plain; charset=utf-8',
@@ -126,8 +127,23 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
       return
     }
 
+    if (method === 'GET' && path === '/new') {
+      const roster = await sessionsApi.agentPresetRoster(ctx)
+      sendHtml(
+        res,
+        200,
+        ui.renderNewSession(config, {
+          options: roster ? roster.presets : [],
+          defaultId: roster ? roster.defaultId : '',
+        }),
+      )
+      return
+    }
+
     if (method === 'POST' && path === '/new') {
-      const sessionId = await sessionsApi.createSession(ctx, config.cwd)
+      const body = await readBody(req)
+      const preset = String(body.get('preset') || '').trim()
+      const sessionId = await sessionsApi.createSession(ctx, config.cwd, preset || undefined)
       redirect(res, '/c/' + encodeURIComponent(sessionId))
       return
     }
@@ -402,6 +418,21 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
       const model = await sessionsApi.modelChoice(controller, '')
       const names = model.efforts.map((entry) => entry.id).join(',')
       return model.provider + '/' + model.model + ' (' + (names || 'no reasoning') + ')'
+    } catch (error) {
+      return 'unavailable: ' + errorText(error)
+    }
+  }
+
+  async function presetLine(controller: KindleContext): Promise<string> {
+    try {
+      const roster = await sessionsApi.agentPresetRoster(controller)
+      if (!roster) return 'none'
+      if (!roster.presets.length) return 'empty'
+      return (
+        roster.presets.map((preset) => preset.id + (preset.broken ? '(broken)' : '')).join(', ') +
+        ' | default ' +
+        (roster.defaultId || '?')
+      )
     } catch (error) {
       return 'unavailable: ' + errorText(error)
     }

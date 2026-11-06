@@ -160,6 +160,13 @@ h1,h2,h3,h4{font-weight:bold;margin:0}
 .cell{display:block;width:100%;height:96px;line-height:96px;padding:0;border:0;background:#fff;color:#000;text-align:center;font-size:0.88em;text-decoration:none}
 .cell:active{background:#e8e8e8}
 
+.mode{display:block;width:100%;text-align:left;padding:22px 24px;margin:0 0 18px;border:3px solid #000;background:#fff;color:#000;font:inherit}
+.mode:active{background:#dcdcdc}
+.mode .n{display:block;font-family:serif;font-size:1.02em;font-weight:bold;line-height:1.4}
+.mode .d{display:block;margin-top:10px;font-size:0.8em;line-height:1.5;color:#444}
+.mode .badge{font-size:0.72em;font-weight:normal;color:#555;border:1px solid #999;padding:1px 6px;margin-left:8px}
+.mode[disabled]{opacity:0.45}
+
 .lbl{margin:0 0 10px;font-size:0.82em;letter-spacing:0.06em;color:#555}
 .modelbar{padding:18px 24px 20px;border-bottom:2px solid #ddd}
 .seg{width:100%;border-collapse:collapse;table-layout:fixed;border:2px solid #000}
@@ -386,7 +393,7 @@ ${notice ? `<div class="alert">${escapeHtml(notice)}</div>` : ''}
 </div>
 <div id="scroll">${balance}
 ${rows}</div>
-<div id="foot">${pager}<div id="dock" class="dock"><form method="post" action="/new"><button type="submit" class="btn primary">＋ 新会话</button></form></div></div>
+<div id="foot">${pager}<div id="dock" class="dock"><a class="btn primary" href="/new">＋ 新会话</a></div></div>
 <script>${dockScript()}</script>`
   return shell('DSH Kindle', body, { fontSize: config.fontSize, bodyClass: 'ls' })
 }
@@ -408,6 +415,47 @@ ${pageHead('改名')}
 </form>
 </div>`
   return shell('改名', body, { fontSize: config.fontSize })
+}
+
+export interface NewSessionOption {
+  id: string
+  name: string
+  description: string
+  broken: string
+}
+
+export interface NewSessionView {
+  options: NewSessionOption[]
+  defaultId: string
+}
+
+export function renderNewSession(config: KindleConfig, view: NewSessionView): string {
+  const cells = view.options.length
+    ? view.options
+        .map((option) => {
+          const badge = option.id === view.defaultId ? '<span class="badge">默认</span>' : ''
+          const detail = option.broken
+            ? `<span class="d">暂不可用：${escapeHtml(option.broken)}</span>`
+            : option.description
+              ? `<span class="d">${escapeHtml(option.description)}</span>`
+              : ''
+          return `<form method="post" action="/new"><input type="hidden" name="preset" value="${escapeHtml(option.id)}"><button type="submit" class="mode"${option.broken ? ' disabled' : ''}><span class="n">${escapeHtml(option.name)}${badge}</span>${detail}</button></form>`
+        })
+        .join('')
+    : `<form method="post" action="/new"><button type="submit" class="btn primary">新建会话</button></form>`
+
+  const hint = view.options.length
+    ? '<p class="hint">模式决定这个会话带哪些能力，开了以后不能换。</p>'
+    : '<p class="hint">这套部署只配了一种模式。</p>'
+
+  const body = `
+${toolBar('<a href="/s">‹ 列表</a>', '')}
+${pageHead('新会话', view.options.length > 1 ? '选一个模式' : '')}
+<div class="pad">
+${hint}
+${cells}
+</div>`
+  return shell('新会话', body, { fontSize: config.fontSize })
 }
 
 export function renderDelete(config: KindleConfig, view: DeleteView): string {
