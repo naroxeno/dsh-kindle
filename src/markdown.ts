@@ -1,3 +1,6 @@
+import { readFileSync, statSync } from 'node:fs'
+import { extname, resolve } from 'node:path'
+
 const STAMP = new URL(import.meta.url).search
 const { escapeHtml, texToSvg } = await import('./math.js' + STAMP)
 
@@ -6,9 +9,10 @@ export interface MarkdownOptions {
 }
 
 interface Piece {
-  kind: 'text' | 'code' | 'math'
+  kind: 'text' | 'code' | 'math' | 'image'
   value: string
   display?: boolean
+  alt?: string
 }
 
 export function renderMarkdown(src: string, opts: MarkdownOptions = {}): string {
@@ -121,6 +125,13 @@ export function renderMarkdown(src: string, opts: MarkdownOptions = {}): string 
       continue
     }
 
+    const lone = /^\s{0,3}!\[([^\]\n]{0,200})\]\(([^)\s]{1,2000})\)\s*$/.exec(line)
+    if (lone) {
+      blocks.push(imageHtml(lone[2], lone[1]))
+      i += 1
+      continue
+    }
+
     const para: string[] = []
     while (i < lines.length && !/^\s*$/.test(lines[i]) && !startsBlock(lines, i)) {
       para.push(lines[i])
@@ -201,6 +212,16 @@ export function inline(text: string, fontPx = 30): string {
       }
     }
 
+    if (ch === '!' && text[i + 1] === '[') {
+      const image = /^!\[([^\]\n]{0,200})\]\(([^)\s]{1,2000})\)/.exec(text.slice(i))
+      if (image) {
+        flushText()
+        pieces.push({ kind: 'image', value: image[2], alt: image[1] })
+        i += image[0].length
+        continue
+      }
+    }
+
     if (ch === '\\' && (text[i + 1] === '(' || text[i + 1] === '[')) {
       const open = text[i + 1]
       const closeToken = open === '(' ? '\\)' : '\\]'
@@ -232,6 +253,7 @@ export function inline(text: string, fontPx = 30): string {
 
   return pieces
     .map((piece) => {
+      if (piece.kind === 'image') return imageHtml(piece.value, piece.alt || '')
       if (piece.kind === 'code') return `<code>${escapeHtml(piece.value)}</code>`
       if (piece.kind === 'math') {
         const svg = texToSvg(piece.value, { display: piece.display, fontPx })
@@ -267,4 +289,48 @@ function emphasis(escaped: string): string {
 
 function escapeAttribute(value: string): string {
   return escapeHtml(value).replace(/'/g, '&#39;')
+}
+
+const IMAGE_EXTS = new Set(['.svg', '.png', '.jpg', '.jpeg', '.gif', '.webp'])
+const IMAGE_CACHE = new Map<string, { key: string; html: string }>()
+const IMAGE_CACHE_LIMIT = 32
+
+/** ![alt](src) -> inline SVG (line art) or a data URI (raster), so e-ink clients need no extra route. */
+function imageHtml(src: string, alt: string): string {
+  const label = alt ? escapeHtml(alt).trim() : ''
+  let href = src.trim()
+  if (href.startsWith('<') && href.endsWith('>')) href = href.slice(1, -1).trim()
+  const missing = `<span class="figmiss">${label ? '[' + label + ']' : '[图]'}</span>`
+  if (!href) return missing
+  if (/^(https?:\/\/|data:)/i.test(href)) {
+    return `<figure class="fig"><img src="${escapeAttribute(href)}" alt="${label}"></figure>`
+  }
+  const path = resolve(process.cwd(), href)
+  const ext = extname(path).toLowerCase()
+  if (!IMAGE_EXTS.has(ext)) return missing
+  try {
+    const stat = statSync(path)
+    if (!stat.isFile()) return missing
+    const key = `${stat.size}:${Math.floor(stat.mtimeMs)}`
+    const cached = IMAGE_CACHE.get(path)
+    if (cached && cached.key === key) return cached.html
+    let html: string
+    if (ext === '.svg') {
+      if (stat.size > 400 * 1024) return missing
+      let svg = readFileSync(path, 'utf8')
+      svg = svg.replace(/<\?xml[\s\S]*?\?>/g, '').replace(/<!DOCTYPE[^>]*>/gi, '')
+      if (/<script|\son[a-z]+\s*=/i.test(svg)) return missing
+      html = `<figure class="fig" role="img" aria-label="${label}">${svg}</figure>`
+    } else {
+      if (stat.size > 8 * 1024 * 1024) return missing
+      const version = Math.floor(stat.mtimeMs).toString(36)
+      const url = `/img?p=${encodeURIComponent(path)}&v=${version}`
+      html = `<figure class="fig"><img src="${escapeAttribute(url)}" alt="${label}"></figure>`
+    }
+    IMAGE_CACHE.set(path, { key, html })
+    if (IMAGE_CACHE.size > IMAGE_CACHE_LIMIT) IMAGE_CACHE.clear()
+    return html
+  } catch {
+    return missing
+  }
 }

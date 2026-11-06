@@ -27,6 +27,9 @@ interface ShellOptions {
 
 export interface ListExtras {
   balance?: string
+  page?: number
+  pages?: number
+  total?: number
 }
 
 export interface RenameView {
@@ -132,6 +135,12 @@ h1,h2,h3,h4{font-weight:bold;margin:0}
 .row .meta{margin:8px 0 0;font-size:0.85em;color:#555}
 .row .meta .n{margin-right:14px}
 .row:active{background:#eaeaea}
+.pager{width:100%;border-collapse:collapse;table-layout:fixed;border-bottom:2px solid #ddd}
+.pager td{padding:0;border-left:2px solid #ddd}
+.pager td:first-child{border-left:0}
+.pager a,.pager span{display:block;height:96px;line-height:96px;text-align:center;font-size:0.88em}
+.pager span{color:#aaa}
+.pager a:active{background:#e8e8e8}
 .flag{display:inline-block;border:2px solid #000;background:#000;color:#fff;padding:1px 10px;font-size:1em;line-height:1.35}
 .flag.off{background:#fff;color:#000}
 
@@ -199,6 +208,11 @@ input[type=text],input[type=password]{display:block;width:100%;height:104px;padd
 
 .mathblock{text-align:center;margin:22px 0;overflow:hidden}
 svg{max-width:100%}
+figure.fig{margin:26px 0;padding:0;text-align:center}
+figure.fig svg{max-width:100%;height:auto}
+figure.fig img{max-width:100%;height:auto}
+figure.fig figcaption{margin-top:10px;font-size:0.74em;color:#444}
+.figmiss{font-family:monospace;font-size:0.72em;color:#555}
 .matherr{font-family:monospace;font-size:0.72em;background:#f4f4f4;border:2px dotted #888;padding:4px 8px;word-wrap:break-word}
 
 .composer{margin-top:40px;padding:0 24px 8px;border-top:3px solid #000}
@@ -206,6 +220,11 @@ svg{max-width:100%}
 .palette td{padding:5px}
 .palette button{display:block;width:100%;height:92px;padding:0;border:2px solid #000;background:#fff;color:#000;font-size:0.86em;line-height:1.15}
 .palette button:active{background:#e8e8e8}
+
+body.ls{padding-bottom:0}
+body.ls #scroll{padding-bottom:24px}
+.dock{border-top:2px solid #000;background:#fff;padding:8px 24px 12px}
+.dock .btn{height:110px;line-height:104px;font-size:1em}
 `
 
 function shell(title: string, body: string, opts: ShellOptions = {}): string {
@@ -241,6 +260,23 @@ function paletteTable(): string {
     rows.push(`<tr>${cells}</tr>`)
   }
   return `<table class="palette">${rows.join('')}</table>`
+}
+
+function pagerCell(on: boolean, target: number, label: string): string {
+  return on ? `<td><a href="/s?p=${target}">${label}</a></td>` : `<td><span>${label}</span></td>`
+}
+
+function dockScript(): string {
+  return `
+var sc=document.getElementById('scroll'),hd=document.getElementById('head'),ft=document.getElementById('foot');
+function fitFoot(){
+  if(!sc||!hd||!ft){return;}
+  sc.style.minHeight='';
+  var h=(document.documentElement.clientHeight||window.innerHeight||0)-hd.offsetHeight-ft.offsetHeight;
+  if(h>0&&sc.offsetHeight<h){sc.style.minHeight=h+'px';}
+}
+fitFoot();
+window.onresize=fitFoot;`
 }
 
 function composerScript(extra: string): string {
@@ -313,20 +349,34 @@ export function renderList(
           return `<a class="row" href="/c/${id}"><table><tr><td class="t"><div class="ttl">${escapeHtml(s.title)}</div><div class="meta">${meta}</div></td><td class="g">›</td></tr></table></a>`
         })
         .join('')
-    : '<div class="empty"><p class="t">这里还没有会话</p><p class="hint">点上面的「＋ 新会话」开一个。</p></div>'
+    : '<div class="empty"><p class="t">这里还没有会话</p><p class="hint">点下面的「＋ 新会话」开一个。</p></div>'
 
   const balance = extras.balance
     ? `<a class="row" href="/me"><table><tr><td class="t"><div class="ttl">余额 ${escapeHtml(extras.balance)}</div></td><td class="g">›</td></tr></table></a>`
     : ''
 
+  const page = extras.page || 1
+  const pages = extras.pages || 1
+  const total = extras.total === undefined ? sessions.length : extras.total
+  const sub = [total ? `共 ${total} 个` : '', pages > 1 ? `第 ${page} / ${pages} 页` : '']
+    .filter(Boolean)
+    .join(' · ')
+  const pager =
+    pages > 1
+      ? `<table class="pager"><tr>${pagerCell(page > 1, page - 1, '‹ 上一页')}${pagerCell(page < pages, page + 1, '下一页 ›')}</tr></table>`
+      : ''
+
   const body = `
+<div id="head">
 ${toolBar('<span class="brand">DSH · Kindle</span>', '<a href="/me">账户</a><a href="/s">刷新</a>')}
-${pageHead('会话', sessions.length ? `共 ${sessions.length} 个` : '')}
+${pageHead('会话', sub)}
 ${notice ? `<div class="alert">${escapeHtml(notice)}</div>` : ''}
-<form method="post" action="/new" class="pad"><button type="submit" class="btn primary">＋ 新会话</button></form>
-${balance}
-${rows}`
-  return shell('DSH Kindle', body, { fontSize: config.fontSize })
+</div>
+<div id="scroll">${balance}
+${rows}</div>
+<div id="foot">${pager}<div id="dock" class="dock"><form method="post" action="/new"><button type="submit" class="btn primary">＋ 新会话</button></form></div></div>
+<script>${dockScript()}</script>`
+  return shell('DSH Kindle', body, { fontSize: config.fontSize, bodyClass: 'ls' })
 }
 
 export function renderRename(config: KindleConfig, view: RenameView): string {
