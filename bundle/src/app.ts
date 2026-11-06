@@ -1,5 +1,6 @@
-import { readFileSync } from 'node:fs'
+import { createReadStream, readFileSync, statSync } from 'node:fs'
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import { extname, isAbsolute, resolve, sep } from 'node:path'
 import type { Generation } from './generation.js'
 import type { KindleApp, KindleConfig, KindleContext, KindleHost, ModelChoice } from './host.js'
 import type { Transcript } from './sessions.js'
@@ -8,6 +9,8 @@ const STAMP = new URL(import.meta.url).search
 const VERSION: string = JSON.parse(
   readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
 ).version
+
+const LIST_PAGE_SIZE = 4
 
 class HttpError extends Error {
   status: number
@@ -62,11 +65,17 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
     if (method === 'GET' && path === '/s') {
       const sessions = await sessionsApi.listSessions(ctx, config.cwd)
       const balance = await account.readAccount(services.accountController, { timeoutMs: 1500 })
+      const pages = Math.max(1, Math.ceil(sessions.length / LIST_PAGE_SIZE))
+      const page = Math.min(pages, Math.max(1, Number(url.searchParams.get('p')) || 1))
+      const start = (page - 1) * LIST_PAGE_SIZE
       sendHtml(
         res,
         200,
-        ui.renderList(config, sessions, '', {
+        ui.renderList(config, sessions.slice(start, start + LIST_PAGE_SIZE), '', {
           balance: account.balanceLine(balance),
+          page,
+          pages,
+          total: sessions.length,
         }),
       )
       return
@@ -109,6 +118,11 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
         'cache-control': 'no-store',
       })
       res.end(lines.join('\n') + '\n')
+      return
+    }
+
+    if (method === 'GET' && path === '/img') {
+      serveLocalImage(config, req, res, url)
       return
     }
 
@@ -412,6 +426,64 @@ function sendHtml(res: ServerResponse, status: number, html: string, extraCookie
 function redirect(res: ServerResponse, location: string) {
   res.writeHead(303, { Location: location, 'content-length': 0 })
   res.end()
+}
+
+const IMAGE_MIME: Record<string, string> = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.svg': 'image/svg+xml',
+}
+
+const IMAGE_MAX_BYTES = 12 * 1024 * 1024
+
+/**
+ * Serves a local image file for `<img src="/img?p=…">`.
+ *
+ * The image stays in the browser's HTTP cache instead of being re-sent inside
+ * every page render, which matters on e-ink: a full refresh re-renders the
+ * whole document, and inline SVG sometimes comes back blank on the device.
+ */
+function serveLocalImage(
+  config: KindleConfig,
+  req: IncomingMessage,
+  res: ServerResponse,
+  url: URL,
+): void {
+  const raw = url.searchParams.get('p') || ''
+  if (!raw) throw new HttpError(404, '没有指定图片。')
+  const file = isAbsolute(raw) ? raw : resolve(config.cwd, raw)
+  const mime = IMAGE_MIME[extname(file).toLowerCase()]
+  if (!mime) throw new HttpError(404, '不是图片。')
+  const roots = [config.cwd, process.cwd()]
+  const inside = roots.some((root) => file === root || file.startsWith(root + sep))
+  if (!inside) throw new HttpError(403, '图片不在工作目录里。')
+
+  let stat
+  try {
+    stat = statSync(file)
+  } catch {
+    throw new HttpError(404, '图片不存在。')
+  }
+  if (!stat.isFile()) throw new HttpError(404, '图片不存在。')
+  if (stat.size > IMAGE_MAX_BYTES) throw new HttpError(413, '图片太大。')
+
+  const etag = '"' + stat.size.toString(16) + '-' + Math.floor(stat.mtimeMs).toString(16) + '"'
+  const headers: Record<string, string> = {
+    'content-type': mime,
+    'cache-control': 'public, max-age=604800',
+    etag,
+    'content-length': String(stat.size),
+  }
+  if (req.headers['if-none-match'] === etag) {
+    res.writeHead(304, headers)
+    res.end()
+    return
+  }
+  res.writeHead(200, headers)
+  createReadStream(file).pipe(res)
 }
 
 function escapeText(value: unknown): string {

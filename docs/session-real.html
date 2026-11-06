@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>replay</title>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:#fff;color:#000}
+body{font-family:"STHeiti","Heiti SC","PingFang SC","Microsoft YaHei","Droid Sans Fallback","Noto Sans CJK SC","Source Han Sans SC","WenQuanYi Zen Hei","FZHei","SimHei",sans-serif;font-size:30px;line-height:1.7;padding-bottom:96px;-webkit-text-size-adjust:100%}
+a{color:#000;text-decoration:none;outline:0}
+.hei{font-family:"STHeiti","Heiti SC","PingFang SC","Microsoft YaHei","Droid Sans Fallback","Noto Sans CJK SC","Source Han Sans SC","WenQuanYi Zen Hei","FZHei","SimHei",sans-serif}
+h1,h2,h3,h4{font-weight:bold;margin:0}
+
+.tb{width:100%;border-collapse:collapse;border-bottom:2px solid #ddd}
+.tb td{height:96px;padding:0;vertical-align:middle}
+.tb .tl{text-align:left;padding-left:12px}
+.tb .tr{text-align:right;padding-right:12px}
+.tb a{display:inline-block;padding:24px 16px;font-size:0.9em;line-height:1.2;color:#000}
+.tb .brand{display:inline-block;padding-left:12px;font-size:0.9em;font-weight:bold;letter-spacing:0.06em}
+
+.hd{padding:10px 24px 22px;border-bottom:3px solid #000}
+.hd h1{font-size:1.16em;line-height:1.35;word-wrap:break-word}
+.hd .sub{margin:8px 0 0;font-size:0.82em;color:#555}
+
+.row{display:block;border-bottom:2px solid #ddd;color:#000}
+.row table{width:100%;border-collapse:collapse}
+.row td{padding:22px 0;vertical-align:middle}
+.row td.t{padding-left:24px;padding-right:12px}
+.row td.g{width:64px;text-align:center;font-size:1.25em;color:#777}
+.row .ttl{font-family:serif;font-size:1.06em;font-weight:bold;line-height:1.42;word-wrap:break-word}
+.row .meta{margin:8px 0 0;font-size:0.85em;color:#555}
+.row .meta .n{margin-right:14px}
+.row:active{background:#eaeaea}
+.pager{width:100%;border-collapse:collapse;table-layout:fixed;border-bottom:2px solid #ddd}
+.pager td{padding:0;border-left:2px solid #ddd}
+.pager td:first-child{border-left:0}
+.pager a,.pager span{display:block;height:96px;line-height:96px;text-align:center;font-size:0.88em}
+.pager span{color:#aaa}
+.pager a:active{background:#e8e8e8}
+.flag{display:inline-block;border:2px solid #000;background:#000;color:#fff;padding:1px 10px;font-size:1em;line-height:1.35}
+.flag.off{background:#fff;color:#000}
+
+.strip{width:100%;border-collapse:collapse;table-layout:fixed;border-bottom:2px solid #ddd}
+.strip td{padding:0;border-left:2px solid #ddd}
+.strip td:first-child{border-left:0}
+.cell{display:block;width:100%;height:96px;line-height:96px;padding:0;border:0;background:#fff;color:#000;text-align:center;font-size:0.88em;text-decoration:none}
+.cell:active{background:#e8e8e8}
+
+.lbl{margin:0 0 10px;font-size:0.82em;letter-spacing:0.06em;color:#555}
+.modelbar{padding:18px 24px 20px;border-bottom:2px solid #ddd}
+.seg{width:100%;border-collapse:collapse;table-layout:fixed;border:2px solid #000}
+.seg td{padding:0;border-left:2px solid #000}
+.seg td:first-child{border-left:0}
+.mini{display:block;width:100%;height:92px;line-height:92px;padding:0;border:0;background:#fff;color:#000;font-size:0.9em}
+.mini.on{background:#000;color:#fff}
+
+.pad{padding:24px}
+.sect{padding:26px 0 12px;font-size:0.82em;letter-spacing:0.1em;color:#555}
+.hint{margin:14px 0 0;font-size:0.86em;line-height:1.6;color:#555}
+.alert{background:#000;color:#fff;padding:22px 24px;font-size:0.9em;line-height:1.5;margin:0 0 24px}
+.empty{padding:56px 24px;text-align:center}
+.empty .t{margin:0 0 12px;font-size:1.04em}
+.value{font-size:1.45em;font-weight:bold;line-height:1.3}
+
+.btn{display:block;width:100%;height:104px;line-height:98px;margin:0;padding:0;border:3px solid #000;background:#fff;color:#000;font-size:0.94em;text-align:center;text-decoration:none}
+button.btn{line-height:98px}
+.btn:active{background:#dcdcdc}
+.btn.primary{background:#000;color:#fff}
+.btn.primary:active{background:#333}
+.stack .btn{margin-top:16px}
+
+textarea{display:block;width:100%;min-height:9em;padding:18px;border:3px solid #000;background:#fff;color:#000;font-size:1em;line-height:1.6}
+input[type=text],input[type=password]{display:block;width:100%;height:104px;padding:0 18px;border:3px solid #000;background:#fff;color:#000;font-size:1em}
+
+.msg{padding:22px 24px 24px;border-bottom:2px solid #ddd;border-left:10px solid #fff}
+.msg.u{background:#f1f1f1;border-left-color:#000}
+.msg .who{margin:0 0 14px;font-size:0.82em;letter-spacing:0.12em;color:#555}
+.msg.u .who{color:#000;font-weight:bold}
+.msg .body{overflow:hidden}
+.msg .body > *:first-child{margin-top:0}
+.msg .body > *:last-child{margin-bottom:0}
+.msg .body p{margin:16px 0}
+.msg .body h2,.msg .body h3,.msg .body h4{font-size:1.04em;line-height:1.4;margin:28px 0 12px}
+.msg .body ul,.msg .body ol{margin:16px 0;padding-left:40px}
+.msg .body li{margin:8px 0}
+.msg .body hr{border:0;border-top:3px solid #ccc;margin:28px 0}
+.msg .body blockquote{margin:20px 0;padding-left:18px;border-left:8px solid #ddd;color:#333}
+.msg .body table{border-collapse:collapse;margin:20px 0;font-size:0.84em;max-width:100%}
+.msg .body td,.msg .body th{border:2px solid #999;padding:8px 10px;vertical-align:top;word-wrap:break-word}
+.msg .body pre.code{font-family:monospace;font-size:0.74em;line-height:1.55;background:#f5f5f5;border:2px solid #ccc;padding:14px;white-space:pre-wrap;word-wrap:break-word;margin:20px 0}
+.msg .body code{font-family:monospace;font-size:0.9em;background:#eee;padding:1px 5px}
+.msg .body a{text-decoration:underline}
+
+.msg.tools{background:#f6f6f6;border-left-color:#bbb}
+.msg.tools .who{font-size:0.8em}
+.toolrow{margin:14px 0}
+.toolname{margin-bottom:6px;font-family:monospace;font-size:0.76em;color:#333}
+.toolbody{font-family:monospace;font-size:0.72em;line-height:1.55;color:#555;white-space:pre-wrap;word-wrap:break-word}
+.toolbody.err{color:#8a0000}
+
+.st{padding:20px 24px;border-bottom:2px solid #ddd;background:#f1f1f1;font-size:0.86em}
+.older{display:block;padding:24px 0;border-bottom:2px solid #ddd;text-align:center;font-size:0.86em}
+.older:active{background:#eaeaea}
+
+.mathblock{text-align:center;margin:22px 0;overflow:hidden}
+svg{max-width:100%}
+.matherr{font-family:monospace;font-size:0.72em;background:#f4f4f4;border:2px dotted #888;padding:4px 8px;word-wrap:break-word}
+
+.composer{margin-top:40px;padding:0 24px 8px;border-top:3px solid #000}
+.palette{width:100%;border-collapse:separate;border-spacing:0;table-layout:fixed}
+.palette td{padding:5px}
+.palette button{display:block;width:100%;height:92px;padding:0;border:2px solid #000;background:#fff;color:#000;font-size:0.86em;line-height:1.15}
+.palette button:active{background:#e8e8e8}
+
+body.ls{padding-bottom:0}
+body.ls #scroll{padding-bottom:24px}
+.dock{border-top:2px solid #000;background:#fff;padding:8px 24px 12px}
+.dock .btn{height:110px;line-height:104px;font-size:1em}
+</style>
+</head><body class="hei">
+
+<table class="tb"><tr><td class="tl"><a href="/s">‹ 列表</a></td><td class="tr"><a href="/c/replay">刷新</a></td></tr></table>
+<div class="hd"><h1>replay</h1><p class="sub">更新于 1970-01-01 08:00</p></div>
+
+<table class="strip"><tr>
+  <td><form method="post" action="/c/replay/fork"><button type="submit" class="cell">分叉</button></form></td>
+  <td><a class="cell" href="/c/replay/rename">改名</a></td>
+  <td><a class="cell" href="/c/replay/delete">删除</a></td>
+  <td><a class="cell" href="#composer">✎ 输入</a></td>
+</tr></table>
+<div class="st" id="state" style="display:none"></div>
+
+<div id="msgs"><div class="msg u"><div class="who">你</div><div class="body">如何分析意象特征?(高中语文诗歌)</div></div><div class="msg a"><div class="who">DSH</div><div class="body"><p>诗歌意象分析，抓四个维度就够了：先拆解物象，再读出意蕴，最后落到表达效果和情感。</p>
+<p>一、物象层（写了什么）
+找出诗句中具体的景物、物品、人物。区分“中心意象”与“辅助意象”，注意它们的属性：颜色、声音、气味、温度、动静、虚实。</p>
+<p>常见类别：</p>
+<ul><li>自然类：月、柳、雁、梅、竹、流水、夕阳</li><li>生活类：灯、酒、船、砧声、捣衣、笛声</li><li>时间类：秋、暮、夜、岁寒</li></ul>
+<p>二、意蕴层（意味着什么）</p>
+<ol><li>文化积淀义：柳=留别，月=思乡，雁=传书，菊=隐逸</li><li>语境临时义：同一意象在不同诗中含义会反转（如“月”可作团圆，也可作孤寂）</li><li>情与志：透过意象看作者寄托的情感、志向、境遇。</li></ol>
+<p>三、组合层（怎么组织的）</p>
+<ul><li>意象群：多个意象共同营造氛围（如“枯藤老树昏鸦”三组叠加）</li><li>组合结构：并列、对比、递进、虚实相生</li><li>意象与意象之间的“空白”，正是意境所在。</li></ul>
+<p>四、表达层（如何呈现）</p>
+<ul><li>修辞：比喻、拟人、象征、通感</li><li>感官：视听嗅触的转换（“冷月无声”是视→听/触）</li><li>手法：渲染、烘托、衬托、动静结合、以乐景写哀</li><li>语言：炼字（动词、形容词、叠词）、色彩词</li></ul>
+<p>答题模板（四步）</p>
+<ol><li>指出意象及其特征（“诗中的‘孤舟’‘寒江雪’……”）</li><li>分析意象的画面感（色彩、动静、氛围）</li><li>揭示意象的象征义或情感指向</li><li>说明表达效果及作用（对主旨、结构、情感的作用）</li></ol>
+<p>关键提醒：不要只罗列意象名称，要写出“特征+情感指向+效果”这条链。典故类意象（如“杜鹃”“鹧鸪”）要结合用典背景谈；虚实结合类（如“忆”“梦”中的意象）要说明为何用虚写。</p>
+<p>要不要我给你一个具体诗例，按这四步走一遍？</p></div></div><div class="msg u"><div class="who">你</div><div class="body">⟪病柏⟫</div></div><div class="msg a"><div class="who">DSH</div><div class="body"><p>杜甫《病柏》正好是咏物寄慨的典型样本，下面按四步逐一走一遍：</p>
+<p><strong>一、物象</strong>
+中心意象是“柏”：前半由“崇冈”“童童状如盖”“龙虎姿”写它盛时之貌；后半变为“日夜柯叶改”。辅助意象有三组：丹凤、鸱鸮、客。</p>
+<p><strong>二、意蕴</strong>
+柏本应“岁寒后凋”（《论语·子罕》），诗中却“中路颜色坏”，这是反用典故：柏不再象征坚贞，而是象征根基已朽的王朝与见弃的贤才。鸱鸮穿穴、在树内养子，是《豳风·鸱鸮》里小人盘踞的意象；丹凤领雏哀鸣于树外，则是贤者被逐。一树内外，就是朝局。</p>
+<p><strong>三、组合</strong>
+盛衰对比：先写“如盖”，后写“柯叶改”，中间以“千年根”作转折。内外对比：树外丹凤、树内鸱鸮。两组对比叠起来，才得出“非不得地，而终不可恃”的结论。</p>
+<p><strong>四、表达</strong>
+全篇用白描铺陈，不下一句议论，直到末句“静求元精理，浩荡难倚赖”才点破，把咏物升为“盛衰无凭”的哲理。较之直斥小人，这种托物写法更沉着，也更痛。</p>
+<p><strong>答题链</strong>（通用写法）：
+特征（高大如盖→柯叶忽改）→ 象征义（王朝/贤才）→ 手法（反用“岁寒后凋”、内外对比）→ 效果（以物之盛衰写国之盛衰，含蓄而沉郁）。</p>
+<p>要点在“反用典故”四字，写进卷面即可与只答“托物言志”的答案拉开差距。</p></div></div></div>
+<div class="composer" id="composer">
+  <div class="sect">输入</div>
+  <p class="hint">公式用 $…$ 包起来，用 AsciiMath 语法（例：$sqrt(x^2+y^2)$、$int_0^1 f(x) dx$）。</p>
+  <form method="post" action="/c/replay/send">
+    <textarea id="msg" name="msg" rows="7"></textarea>
+    <div class="stack">
+      <button type="submit" class="btn primary">发送</button>
+      <button type="button" class="btn" onclick="return doPreview()">预览公式</button>
+      <button type="button" class="btn" id="stopbtn" onclick="return doStop()" style="display:none">停止生成</button>
+    </div>
+  </form>
+  <div class="sect">公式</div>
+  <table class="palette"><tr><td><button type="button" onclick="ins(&quot;$frac{ }{ }$&quot;)">分式</button></td><td><button type="button" onclick="ins(&quot;$sqrt{ }$&quot;)">根号</button></td><td><button type="button" onclick="ins(&quot;$x^2$&quot;)">平方</button></td><td><button type="button" onclick="ins(&quot;$x_1$&quot;)">下标</button></td></tr><tr><td><button type="button" onclick="ins(&quot;$int_a^b f(x) dx$&quot;)">积分</button></td><td><button type="button" onclick="ins(&quot;$sum_(i=1)^n a_i$&quot;)">求和</button></td><td><button type="button" onclick="ins(&quot;$lim_(x-&gt;0) f(x)$&quot;)">极限</button></td><td><button type="button" onclick="ins(&quot;$oo$&quot;)">无穷</button></td></tr><tr><td><button type="button" onclick="ins(&quot;$pi$&quot;)">π</button></td><td><button type="button" onclick="ins(&quot;$alpha$&quot;)">α</button></td><td><button type="button" onclick="ins(&quot;$theta$&quot;)">θ</button></td><td><button type="button" onclick="ins(&quot;$lambda$&quot;)">λ</button></td></tr><tr><td><button type="button" onclick="ins(&quot;$le$&quot;)">≤</button></td><td><button type="button" onclick="ins(&quot;$ge$&quot;)">≥</button></td><td><button type="button" onclick="ins(&quot;$!=$&quot;)">≠</button></td><td><button type="button" onclick="ins(&quot;$xx$&quot;)">×</button></td></tr><tr><td><button type="button" onclick="ins(&quot;$-&gt;$&quot;)">→</button></td><td><button type="button" onclick="ins(&quot;$&lt;=&gt;$&quot;)">⇔</button></td></tr></table>
+  <form id="preview-form" method="post" action="/c/replay/preview" style="display:none">
+    <input type="hidden" name="msg" id="preview-msg">
+  </form>
+  <form id="stop-form" method="post" action="/c/replay/stop" style="display:none"></form>
+</div>
+
+<script>
+var ta=document.getElementById('msg');
+function ins(s){
+  var a=ta.value,b=ta.selectionStart,c=ta.selectionEnd,d='';
+  if(typeof b==='number'&&typeof c==='number'){d=a.substring(0,b)+s+a.substring(c);}
+  else{d=a+s;}
+  ta.value=d;
+  try{ta.focus();if(typeof b==='number'){ta.selectionStart=ta.selectionEnd=b+s.length;}}catch(e){}
+}
+function doPreview(){document.getElementById('preview-msg').value=ta.value;document.getElementById('preview-form').submit();return false;}
+function doStop(){document.getElementById('stop-form').submit();return false;}
+
+(function(){
+  var id="replay",cursor=0,running=false,idle=0,jump=false,fresh=false;
+  function byId(n){return document.getElementById(n);}
+  function setState(text){
+    var s=byId('state');
+    if(!s)return;
+    s.innerHTML=text;
+    s.style.display=text?'block':'none';
+  }
+  function pageHeight(){
+    return document.documentElement.scrollHeight||document.body.scrollHeight||0;
+  }
+  function atBottom(){
+    var y=window.pageYOffset||document.documentElement.scrollTop||document.body.scrollTop||0;
+    return y+window.innerHeight>=pageHeight()-260;
+  }
+  function apply(d){
+    var box=byId('msgs');
+    if(!box)return;
+    var stick=atBottom();
+    if(d.mode==='replace'){box.innerHTML=d.html;}
+    else if(d.html){
+      if(box.insertAdjacentHTML){box.insertAdjacentHTML('beforeend',d.html);}
+      else{box.innerHTML+=d.html;}
+    }
+    if(stick){window.scrollTo(0,pageHeight());}
+  }
+  if(jump){window.scrollTo(0,pageHeight());}
+  function tick(){
+    var x=new XMLHttpRequest();
+    x.open('GET','/c/'+encodeURIComponent(id)+'/tail?since='+cursor,true);
+    x.onreadystatechange=function(){
+      if(x.readyState!==4)return;
+      if(x.status!==200){setTimeout(tick,6000);return;}
+      var d=null;
+      try{d=JSON.parse(x.responseText);}catch(e){location.reload();return;}
+      apply(d);
+      cursor=d.cursor;
+      running=d.running===1;
+      setState(running?'正在生成……（新内容会自动追加）':'');
+      var btn=byId('stopbtn');
+      if(btn){btn.style.display=running?'':'none';}
+      if(running){idle=0;setTimeout(tick,3000);return;}
+      idle++;
+      if(idle<25){setTimeout(tick,(fresh&&idle<=12)?4000:15000);}
+    };
+    x.send(null);
+  }
+  setTimeout(tick, running?1200:4000);
+})();</script>
+<script>window.scrollTo(0,0);</script></body></html>

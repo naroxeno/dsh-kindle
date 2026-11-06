@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DSH Kindle</title>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:#fff;color:#000}
+body{font-family:"STHeiti","Heiti SC","PingFang SC","Microsoft YaHei","Droid Sans Fallback","Noto Sans CJK SC","Source Han Sans SC","WenQuanYi Zen Hei","FZHei","SimHei",sans-serif;font-size:30px;line-height:1.7;padding-bottom:96px;-webkit-text-size-adjust:100%}
+a{color:#000;text-decoration:none;outline:0}
+.hei{font-family:"STHeiti","Heiti SC","PingFang SC","Microsoft YaHei","Droid Sans Fallback","Noto Sans CJK SC","Source Han Sans SC","WenQuanYi Zen Hei","FZHei","SimHei",sans-serif}
+h1,h2,h3,h4{font-weight:bold;margin:0}
+
+.tb{width:100%;border-collapse:collapse;border-bottom:2px solid #ddd}
+.tb td{height:96px;padding:0;vertical-align:middle}
+.tb .tl{text-align:left;padding-left:12px}
+.tb .tr{text-align:right;padding-right:12px}
+.tb a{display:inline-block;padding:24px 16px;font-size:0.9em;line-height:1.2;color:#000}
+.tb .brand{display:inline-block;padding-left:12px;font-size:0.9em;font-weight:bold;letter-spacing:0.06em}
+
+.hd{padding:10px 24px 22px;border-bottom:3px solid #000}
+.hd h1{font-size:1.16em;line-height:1.35;word-wrap:break-word}
+.hd .sub{margin:8px 0 0;font-size:0.82em;color:#555}
+
+.row{display:block;border-bottom:2px solid #ddd;color:#000}
+.row table{width:100%;border-collapse:collapse}
+.row td{padding:22px 0;vertical-align:middle}
+.row td.t{padding-left:24px;padding-right:12px}
+.row td.g{width:64px;text-align:center;font-size:1.25em;color:#777}
+.row .ttl{font-family:serif;font-size:1.06em;font-weight:bold;line-height:1.42;word-wrap:break-word}
+.row .meta{margin:8px 0 0;font-size:0.85em;color:#555}
+.row .meta .n{margin-right:14px}
+.row:active{background:#eaeaea}
+.pager{width:100%;border-collapse:collapse;table-layout:fixed;border-bottom:2px solid #ddd}
+.pager td{padding:0;border-left:2px solid #ddd}
+.pager td:first-child{border-left:0}
+.pager a,.pager span{display:block;height:96px;line-height:96px;text-align:center;font-size:0.88em}
+.pager span{color:#aaa}
+.pager a:active{background:#e8e8e8}
+.flag{display:inline-block;border:2px solid #000;background:#000;color:#fff;padding:1px 10px;font-size:1em;line-height:1.35}
+.flag.off{background:#fff;color:#000}
+
+.strip{width:100%;border-collapse:collapse;table-layout:fixed;border-bottom:2px solid #ddd}
+.strip td{padding:0;border-left:2px solid #ddd}
+.strip td:first-child{border-left:0}
+.cell{display:block;width:100%;height:96px;line-height:96px;padding:0;border:0;background:#fff;color:#000;text-align:center;font-size:0.88em;text-decoration:none}
+.cell:active{background:#e8e8e8}
+
+.lbl{margin:0 0 10px;font-size:0.82em;letter-spacing:0.06em;color:#555}
+.modelbar{padding:18px 24px 20px;border-bottom:2px solid #ddd}
+.seg{width:100%;border-collapse:collapse;table-layout:fixed;border:2px solid #000}
+.seg td{padding:0;border-left:2px solid #000}
+.seg td:first-child{border-left:0}
+.mini{display:block;width:100%;height:92px;line-height:92px;padding:0;border:0;background:#fff;color:#000;font-size:0.9em}
+.mini.on{background:#000;color:#fff}
+
+.pad{padding:24px}
+.sect{padding:26px 0 12px;font-size:0.82em;letter-spacing:0.1em;color:#555}
+.hint{margin:14px 0 0;font-size:0.86em;line-height:1.6;color:#555}
+.alert{background:#000;color:#fff;padding:22px 24px;font-size:0.9em;line-height:1.5;margin:0 0 24px}
+.empty{padding:56px 24px;text-align:center}
+.empty .t{margin:0 0 12px;font-size:1.04em}
+.value{font-size:1.45em;font-weight:bold;line-height:1.3}
+
+.btn{display:block;width:100%;height:104px;line-height:98px;margin:0;padding:0;border:3px solid #000;background:#fff;color:#000;font-size:0.94em;text-align:center;text-decoration:none}
+button.btn{line-height:98px}
+.btn:active{background:#dcdcdc}
+.btn.primary{background:#000;color:#fff}
+.btn.primary:active{background:#333}
+.stack .btn{margin-top:16px}
+
+textarea{display:block;width:100%;min-height:9em;padding:18px;border:3px solid #000;background:#fff;color:#000;font-size:1em;line-height:1.6}
+input[type=text],input[type=password]{display:block;width:100%;height:104px;padding:0 18px;border:3px solid #000;background:#fff;color:#000;font-size:1em}
+
+.msg{padding:22px 24px 24px;border-bottom:2px solid #ddd;border-left:10px solid #fff}
+.msg.u{background:#f1f1f1;border-left-color:#000}
+.msg .who{margin:0 0 14px;font-size:0.82em;letter-spacing:0.12em;color:#555}
+.msg.u .who{color:#000;font-weight:bold}
+.msg .body{overflow:hidden}
+.msg .body > *:first-child{margin-top:0}
+.msg .body > *:last-child{margin-bottom:0}
+.msg .body p{margin:16px 0}
+.msg .body h2,.msg .body h3,.msg .body h4{font-size:1.04em;line-height:1.4;margin:28px 0 12px}
+.msg .body ul,.msg .body ol{margin:16px 0;padding-left:40px}
+.msg .body li{margin:8px 0}
+.msg .body hr{border:0;border-top:3px solid #ccc;margin:28px 0}
+.msg .body blockquote{margin:20px 0;padding-left:18px;border-left:8px solid #ddd;color:#333}
+.msg .body table{border-collapse:collapse;margin:20px 0;font-size:0.84em;max-width:100%}
+.msg .body td,.msg .body th{border:2px solid #999;padding:8px 10px;vertical-align:top;word-wrap:break-word}
+.msg .body pre.code{font-family:monospace;font-size:0.74em;line-height:1.55;background:#f5f5f5;border:2px solid #ccc;padding:14px;white-space:pre-wrap;word-wrap:break-word;margin:20px 0}
+.msg .body code{font-family:monospace;font-size:0.9em;background:#eee;padding:1px 5px}
+.msg .body a{text-decoration:underline}
+
+.msg.tools{background:#f6f6f6;border-left-color:#bbb}
+.msg.tools .who{font-size:0.8em}
+.toolrow{margin:14px 0}
+.toolname{margin-bottom:6px;font-family:monospace;font-size:0.76em;color:#333}
+.toolbody{font-family:monospace;font-size:0.72em;line-height:1.55;color:#555;white-space:pre-wrap;word-wrap:break-word}
+.toolbody.err{color:#8a0000}
+
+.st{padding:20px 24px;border-bottom:2px solid #ddd;background:#f1f1f1;font-size:0.86em}
+.older{display:block;padding:24px 0;border-bottom:2px solid #ddd;text-align:center;font-size:0.86em}
+.older:active{background:#eaeaea}
+
+.mathblock{text-align:center;margin:22px 0;overflow:hidden}
+svg{max-width:100%}
+.matherr{font-family:monospace;font-size:0.72em;background:#f4f4f4;border:2px dotted #888;padding:4px 8px;word-wrap:break-word}
+
+.composer{margin-top:40px;padding:0 24px 8px;border-top:3px solid #000}
+.palette{width:100%;border-collapse:separate;border-spacing:0;table-layout:fixed}
+.palette td{padding:5px}
+.palette button{display:block;width:100%;height:92px;padding:0;border:2px solid #000;background:#fff;color:#000;font-size:0.86em;line-height:1.15}
+.palette button:active{background:#e8e8e8}
+
+body.ls{padding-bottom:0}
+body.ls #scroll{padding-bottom:24px}
+.dock{border-top:2px solid #000;background:#fff;padding:8px 24px 12px}
+.dock .btn{height:110px;line-height:104px;font-size:1em}
+</style>
+</head><body class="ls">
+
+<div id="head">
+<table class="tb"><tr><td class="tl"><span class="brand">DSH · Kindle</span></td><td class="tr"><a href="/me">账户</a><a href="/s">刷新</a></td></tr></table>
+<div class="hd"><h1>会话</h1><p class="sub">共 6 个 · 第 1 / 2 页</p></div>
+
+</div>
+<div id="scroll"><a class="row" href="/me"><table><tr><td class="t"><div class="ttl">余额 ¥12.34</div></td><td class="g">›</td></tr></table></a>
+<a class="row" href="/c/a1"><table><tr><td class="t"><div class="ttl">矩阵求逆与定积分</div><div class="meta">2025-10-22 10:26</div></td><td class="g">›</td></tr></table></a><a class="row" href="/c/a2"><table><tr><td class="t"><div class="ttl">很长的标题用来测试换行：为什么特征值分解在数值上不稳定，以及我们可以怎么做</div><div class="meta">2025-10-21 06:40 <span class="flag off">空会话</span></div></td><td class="g">›</td></tr></table></a><a class="row" href="/c/a3"><table><tr><td class="t"><div class="ttl">导数不等式：14 天重修计划第 3 天</div><div class="meta">2025-10-20 02:53 <span class="flag">生成中</span></div></td><td class="g">›</td></tr></table></a><a class="row" href="/c/a4"><table><tr><td class="t"><div class="ttl">德语自学教材选型</div><div class="meta">2025-10-18 23:06</div></td><td class="g">›</td></tr></table></a></div>
+<div id="foot"><table class="pager"><tr><td><span>‹ 上一页</span></td><td><a href="/s?p=2">下一页 ›</a></td></tr></table><div id="dock" class="dock"><form method="post" action="/new"><button type="submit" class="btn primary">＋ 新会话</button></form></div></div>
+<script>
+var sc=document.getElementById('scroll'),hd=document.getElementById('head'),ft=document.getElementById('foot');
+function fitFoot(){
+  if(!sc||!hd||!ft){return;}
+  sc.style.minHeight='';
+  var h=(document.documentElement.clientHeight||window.innerHeight||0)-hd.offsetHeight-ft.offsetHeight;
+  if(h>0&&sc.offsetHeight<h){sc.style.minHeight=h+'px';}
+}
+fitFoot();
+window.onresize=fitFoot;</script>
+<script>window.scrollTo(0,0);</script></body></html>
