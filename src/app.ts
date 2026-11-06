@@ -1,9 +1,12 @@
 import { createReadStream, readFileSync, statSync } from 'node:fs'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { extname, isAbsolute, resolve, sep } from 'node:path'
+import { homedir } from 'node:os'
+import { basename, dirname, extname, isAbsolute, join, resolve, sep } from 'node:path'
 import type { Generation } from './generation.js'
-import type { KindleApp, KindleConfig, KindleContext, KindleHost, ModelChoice } from './host.js'
-import type { Transcript, TranscriptMessage } from './sessions.js'
+import type { KindleApp, KindleContext, KindleHost, ModelChoice } from './host.js'
+import type { Transcript, TranscriptMessage, WorkspaceEntry } from './sessions.js'
+import type { ListExtras, SettingsNotice, SettingsView } from './ui.js'
 
 const STAMP = new URL(import.meta.url).search
 const VERSION: string = JSON.parse(
@@ -28,6 +31,13 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
   }
   const { sessions: sessionsApi, math, ui, prompt, account } = await generation.load()
   sessionsApi.setHost(services)
+
+  // The Kindle UI keeps its own preferences; the deployment config only seeds
+  // them. `config.cwd` stays the anchor because it never changes without a
+  // dsh restart, so the file survives hot generations.
+  const settingsFile = join(config.cwd, '.kindle-settings.json')
+  const settings = await loadSettings(settingsFile)
+  const activeCwd = (): string => settings.workspace || config.cwd
 
   async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
     try {
@@ -63,21 +73,145 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
     }
 
     if (method === 'GET' && path === '/s') {
-      const sessions = await sessionsApi.listSessions(ctx, config.cwd)
+      const query = searchQuery(url.searchParams.get('q'))
+      const all = await sessionsApi.listSessions(ctx, activeCwd())
+      const matched = query ? filterSessions(all, query) : all
       const balance = await account.readAccount(services.accountController, { timeoutMs: 1500 })
-      const pages = Math.max(1, Math.ceil(sessions.length / LIST_PAGE_SIZE))
+      const pages = Math.max(1, Math.ceil(matched.length / LIST_PAGE_SIZE))
       const page = Math.min(pages, Math.max(1, Number(url.searchParams.get('p')) || 1))
       const start = (page - 1) * LIST_PAGE_SIZE
+      const extras: ListExtras = {
+        balance: account.balanceLine(balance),
+        page,
+        pages,
+        total: matched.length,
+        query,
+        workspace: await workspaceLabel(),
+      }
       sendHtml(
         res,
         200,
-        ui.renderList(config, sessions.slice(start, start + LIST_PAGE_SIZE), '', {
-          balance: account.balanceLine(balance),
-          page,
-          pages,
-          total: sessions.length,
-        }),
+        ui.renderList(config, matched.slice(start, start + LIST_PAGE_SIZE), '', extras),
       )
+      return
+    }
+
+    // The search box has to be a POST: the Kindle renderer only submits forms
+    // that way (a GET form is re-encoded and breaks long queries), so the query
+    // arrives here and the page itself reads it back from the address bar.
+    if (method === 'POST' && path === '/s') {
+      const body = await readBody(req)
+      const query = searchQuery(body.get('q'))
+      redirect(res, query ? '/s?q=' + encodeURIComponent(query) : '/s')
+      return
+    }
+
+    if (method === 'GET' && path === '/settings') {
+      sendHtml(res, 200, ui.renderSettings(config, await settingsView(noticeFor(url))))
+      return
+    }
+
+    if (method === 'POST' && path === '/settings') {
+      const body = await readBody(req)
+      if (String(body.get('action') || '') === 'adopt') {
+        try {
+          const entry = await sessionsApi.ensureWorkspace(activeCwd())
+          if (!entry) throw new Error('这个 Host 没有挂载 workspace 服务')
+          const group = await sessionsApi.listSessions(ctx, entry.path)
+          const adopted = await sessionsApi.adoptWorkspaceSessions(
+            entry.id,
+            group.map((item) => item.sessionId),
+          )
+          redirect(res, '/settings?ok=adopted&n=' + adopted)
+        } catch (error) {
+          sendHtml(
+            res,
+            200,
+            ui.renderSettings(
+              config,
+              await settingsView({
+                text: '归组失败：' + errorText(error),
+                error: true,
+              }),
+            ),
+          )
+        }
+        return
+      }
+
+      const raw = String(body.get('path') || '').trim()
+      const wanted = expandHome(raw)
+      if (!wanted) {
+        sendHtml(
+          res,
+          200,
+          ui.renderSettings(
+            config,
+            await settingsView({ text: '请填一个目录路径。', error: true }),
+          ),
+        )
+        return
+      }
+      if (!isAbsolute(wanted)) {
+        sendHtml(
+          res,
+          200,
+          ui.renderSettings(
+            config,
+            await settingsView({
+              text: '请填绝对路径，例如 /home/naroxeno/kindle-ws。',
+              error: true,
+            }),
+          ),
+        )
+        return
+      }
+      let entry: WorkspaceEntry | null = null
+      try {
+        entry = await sessionsApi.ensureWorkspace(wanted)
+      } catch (error) {
+        sendHtml(
+          res,
+          200,
+          ui.renderSettings(
+            config,
+            await settingsView({
+              text: '这个目录用不了：' + errorText(error),
+              error: true,
+            }),
+          ),
+        )
+        return
+      }
+      settings.workspace = entry ? entry.path : wanted
+      try {
+        await saveSettings(settingsFile, settings)
+      } catch (error) {
+        sendHtml(
+          res,
+          200,
+          ui.renderSettings(
+            config,
+            await settingsView({ text: '存不了设置：' + errorText(error), error: true }),
+          ),
+        )
+        return
+      }
+      // Saving is also the moment to fold the directory's older sessions into
+      // the group, otherwise the list keeps showing the same「未分组」items.
+      let adopted = 0
+      if (entry) {
+        try {
+          const group = await sessionsApi.listSessions(ctx, entry.path)
+          adopted = await sessionsApi.adoptWorkspaceSessions(
+            entry.id,
+            group.map((item) => item.sessionId),
+          )
+        } catch (error) {
+          logger.warn?.('kindle-ui: could not group old sessions: ' + errorText(error))
+        }
+      }
+      redirect(res, '/settings?ok=saved' + (adopted > 0 ? '&n=' + adopted : ''))
       return
     }
 
@@ -113,6 +247,9 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
         'account (balance): ' + (services.accountController ? 'ready' : 'missing'),
         'model catalog: ' + (await catalogLine(ctx)),
         'agent presets: ' + (await presetLine(ctx)),
+        'workspace: ' + activeCwd() + (settings.workspace ? ' (/settings)' : ' (config cwd)'),
+        'workspaces: ' + ((await sessionsApi.listWorkspaces()) ? 'registered' : 'missing'),
+        'settings file: ' + settingsFile,
       )
       res.writeHead(200, {
         'content-type': 'text/plain; charset=utf-8',
@@ -123,7 +260,7 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
     }
 
     if (method === 'GET' && path === '/img') {
-      serveLocalImage(config, req, res, url)
+      serveLocalImage([activeCwd(), config.cwd, process.cwd()], req, res, url)
       return
     }
 
@@ -143,7 +280,11 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
     if (method === 'POST' && path === '/new') {
       const body = await readBody(req)
       const preset = String(body.get('preset') || '').trim()
-      const sessionId = await sessionsApi.createSession(ctx, config.cwd, preset || undefined)
+      const target = await sessionTarget()
+      const sessionId = await sessionsApi.createSession(ctx, {
+        ...(target.workspaceId ? { workspaceId: target.workspaceId } : { cwd: target.cwd }),
+        ...(preset ? { agentPreset: preset } : {}),
+      })
       redirect(res, '/c/' + encodeURIComponent(sessionId))
       return
     }
@@ -155,7 +296,7 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
     const sessionId = decodeURIComponent(parts[1])
     const action = parts[2] || ''
 
-    await requireOwnedSession(sessionsApi, ctx, config, sessionId)
+    await requireOwnedSession(sessionsApi, ctx, activeCwd(), sessionId)
 
     await prompt.ensureKindlePrompt(ctx.sessionController, sessionId)
 
@@ -168,7 +309,7 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
       )
       let transcript: Transcript
       try {
-        transcript = await sessionsApi.readTranscript(ctx, sessionId, config.cwd)
+        transcript = await sessionsApi.readTranscript(ctx, sessionId, activeCwd())
       } catch (error) {
         logger.warn?.('kindle transcript read failed for ' + sessionId + ': ' + errorText(error))
         transcript = {
@@ -205,7 +346,7 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
     if (method === 'GET' && action === 'tools') {
       let transcript: Transcript
       try {
-        transcript = await sessionsApi.readTranscript(ctx, sessionId, config.cwd)
+        transcript = await sessionsApi.readTranscript(ctx, sessionId, activeCwd())
       } catch (error) {
         logger.warn?.('kindle transcript read failed for ' + sessionId + ': ' + errorText(error))
         transcript = {
@@ -242,7 +383,7 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
       const since = Math.max(0, Math.floor(Number(url.searchParams.get('since')) || 0))
       let transcript
       try {
-        transcript = await sessionsApi.readTranscript(ctx, sessionId, config.cwd)
+        transcript = await sessionsApi.readTranscript(ctx, sessionId, activeCwd())
       } catch (error) {
         logger.warn?.('kindle transcript read failed for ' + sessionId + ': ' + errorText(error))
         transcript = {
@@ -280,7 +421,7 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
     }
 
     if (method === 'GET' && action === 'state') {
-      const current = await sessionsApi.sessionState(ctx, sessionId, config.cwd)
+      const current = await sessionsApi.sessionState(ctx, sessionId, activeCwd())
       if (!current) throw new HttpError(404, '会话不存在。')
       res.writeHead(200, {
         'content-type': 'text/plain; charset=utf-8',
@@ -308,7 +449,7 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
     }
 
     if (method === 'GET' && action === 'rename') {
-      const current = await sessionsApi.sessionState(ctx, sessionId, config.cwd)
+      const current = await sessionsApi.sessionState(ctx, sessionId, activeCwd())
       sendHtml(
         res,
         200,
@@ -342,7 +483,7 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
     if (method === 'POST' && action === 'fork') {
       const forked = await sessionsApi.forkSession(ctx, sessionId)
       try {
-        await sessionsApi.labelFork(ctx, sessionId, forked, config.cwd)
+        await sessionsApi.labelFork(ctx, sessionId, forked, activeCwd())
       } catch (error) {
         logger.error?.('kindle-ui: could not title fork ' + forked + ': ' + errorText(error))
       }
@@ -351,14 +492,14 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
     }
 
     if (method === 'GET' && action === 'delete') {
-      const current = await sessionsApi.sessionState(ctx, sessionId, config.cwd)
+      const current = await sessionsApi.sessionState(ctx, sessionId, activeCwd())
       sendHtml(
         res,
         200,
         ui.renderDelete(config, {
           sessionId,
           title: current ? current.title : '',
-          cwd: config.cwd,
+          cwd: activeCwd(),
         }),
       )
       return
@@ -441,13 +582,88 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
   async function requireOwnedSession(
     api: Generation['sessions'],
     controller: KindleContext,
-    options: KindleConfig,
+    cwd: string,
     sessionId: string,
   ): Promise<void> {
-    const sessions = await api.listSessions(controller, options.cwd)
+    const sessions = await api.listSessions(controller, cwd)
     if (!sessions.some((entry) => entry.sessionId === sessionId)) {
       throw new HttpError(404, '这个会话不在 Kindle 工作区里。')
     }
+  }
+
+  /**
+   * Where a new session should land. When the Host groups at all, the cwd is
+   * turned into a workspace first: `session.create({workspaceId})` makes the
+   * Host attach the session, which is the only thing that keeps it out of the
+   * GUI's「未分组」bucket.
+   */
+  async function sessionTarget(): Promise<{ workspaceId?: string; cwd: string }> {
+    const path = activeCwd()
+    let entry: WorkspaceEntry | null = null
+    try {
+      entry = await sessionsApi.ensureWorkspace(path)
+    } catch (error) {
+      throw new HttpError(
+        400,
+        '默认工作区用不了：' + errorText(error) + '。请在「设置」里换一个目录。',
+      )
+    }
+    if (entry) return { workspaceId: entry.id, cwd: entry.path }
+    return { cwd: path }
+  }
+
+  async function workspaceLabel(): Promise<string> {
+    const path = activeCwd()
+    try {
+      const list = await sessionsApi.listWorkspaces()
+      const entry = list ? list.find((item) => item.path === path) : undefined
+      if (entry && entry.title) return entry.title
+    } catch (error) {}
+    return basename(path) || path
+  }
+
+  async function settingsView(notice?: SettingsNotice): Promise<SettingsView> {
+    const path = activeCwd()
+    const list = (await sessionsApi.listWorkspaces()) || []
+    const current = list.find((entry) => entry.path === path)
+    const sessions = await sessionsApi.listSessions(ctx, path)
+    const member = new Set(current ? current.sessionIds : [])
+    return {
+      path,
+      title: current && current.title ? current.title : basename(path) || path,
+      registered: Boolean(current),
+      registryReady: Boolean(services.workspaceRegistry && services.workspaceRegistry.list),
+      choices: list.map((entry) => ({
+        id: entry.id,
+        path: entry.path,
+        title: entry.title || basename(entry.path) || entry.path,
+        current: entry.path === path,
+      })),
+      ungrouped: sessions.filter((item) => !member.has(item.sessionId)).length,
+      notice,
+      settingsFile,
+    }
+  }
+
+  function noticeFor(url: URL): SettingsNotice | undefined {
+    const ok = url.searchParams.get('ok')
+    if (ok === 'saved') {
+      const count = Math.max(0, Number(url.searchParams.get('n')) || 0)
+      return {
+        text: count
+          ? '默认工作区已保存，' + count + ' 个旧会话也归了组。'
+          : '默认工作区已保存。',
+      }
+    }
+    if (ok === 'adopted') {
+      const count = Math.max(0, Number(url.searchParams.get('n')) || 0)
+      return {
+        text: count
+          ? '已把 ' + count + ' 个会话归入当前工作区。'
+          : '当前工作区里没有需要归组的会话。',
+      }
+    }
+    return undefined
   }
 
   function readBody(req: IncomingMessage, limit = 512 * 1024): Promise<URLSearchParams> {
@@ -510,17 +726,16 @@ const IMAGE_MAX_BYTES = 12 * 1024 * 1024
  * whole document, and inline SVG sometimes comes back blank on the device.
  */
 function serveLocalImage(
-  config: KindleConfig,
+  roots: string[],
   req: IncomingMessage,
   res: ServerResponse,
   url: URL,
 ): void {
   const raw = url.searchParams.get('p') || ''
   if (!raw) throw new HttpError(404, '没有指定图片。')
-  const file = isAbsolute(raw) ? raw : resolve(config.cwd, raw)
+  const file = isAbsolute(raw) ? raw : resolve(roots[0] || process.cwd(), raw)
   const mime = IMAGE_MIME[extname(file).toLowerCase()]
   if (!mime) throw new HttpError(404, '不是图片。')
-  const roots = [config.cwd, process.cwd()]
   const inside = roots.some((root) => file === root || file.startsWith(root + sep))
   if (!inside) throw new HttpError(403, '图片不在工作目录里。')
 
@@ -555,6 +770,44 @@ function escapeText(value: unknown): string {
 
 function errorText(error: unknown): string {
   return String((error as { message?: unknown } | null | undefined)?.message || error)
+}
+
+interface StoredSettings {
+  workspace: string
+}
+
+async function loadSettings(file: string): Promise<StoredSettings> {
+  try {
+    const value = JSON.parse(await readFile(file, 'utf8')) as { workspace?: unknown } | null
+    const text = value && typeof value.workspace === 'string' ? expandHome(value.workspace) : ''
+    return { workspace: text && isAbsolute(text) ? text : '' }
+  } catch (error) {
+    return { workspace: '' }
+  }
+}
+
+async function saveSettings(file: string, settings: StoredSettings): Promise<void> {
+  await mkdir(dirname(file), { recursive: true })
+  await writeFile(file, JSON.stringify(settings) + '\n', 'utf8')
+}
+
+/** The same `~` expansion the plugin config uses, so the field accepts `~/x`. */
+function expandHome(path: string): string {
+  const text = String(path || '').trim()
+  if (text === '~') return homedir()
+  if (text.startsWith('~/')) return join(homedir(), text.slice(2))
+  return text
+}
+
+function searchQuery(value: unknown): string {
+  return String(value || '')
+    .trim()
+    .slice(0, 60)
+}
+
+function filterSessions<T extends { title: string }>(sessions: T[], query: string): T[] {
+  const needle = query.toLowerCase()
+  return sessions.filter((item) => item.title.toLowerCase().includes(needle))
 }
 
 /**

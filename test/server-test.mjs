@@ -1,20 +1,40 @@
 import assert from 'node:assert/strict'
+import { mkdtempSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 const B = new URL('../lib/', import.meta.url).href + '/'
 const { apply } = await import(B + 'index.js')
 
-const cwd = '/tmp/kindle-ws-test'
+const cwd = mkdtempSync(join(tmpdir(), 'kindle-ws-test-'))
 let seq = 0
 const store = new Map()
 
-function mkSession(id) {
-  return { sessionId: id, cwd, running: false, blank: true, updatedAt: Date.now(), projections: { values: { title: null } }, events: [] }
+function mkSession(id, path = cwd) {
+  return { sessionId: id, cwd: path, running: false, blank: true, updatedAt: Date.now(), projections: { values: { title: null } }, events: [] }
 }
 function append(s, type, data, surfaceOp) {
   seq += 1
   s.events.push({ type, seq, time: Date.now(), data, ...(surfaceOp ? { surfaceOp } : {}) })
   s.updatedAt = Date.now()
   s.blank = false
+}
+
+const workspaces = new Map()
+const createRequests = []
+
+function workspaceEntity(record) {
+  return {
+    id: record.id,
+    path: record.path,
+    title: record.title,
+    get sessionIds() { return [...record.sessionIds] },
+    async attachSession(sessionId) {
+      const session = store.get(sessionId)
+      if (!session || session.cwd !== record.path) throw new Error('session cwd does not match workspace')
+      if (!record.sessionIds.includes(sessionId)) record.sessionIds.unshift(sessionId)
+    },
+  }
 }
 
 const sessionController = {
@@ -26,8 +46,19 @@ const sessionController = {
     })) }
   },
   async create(req) {
+    createRequests.push(req)
+    if (req.workspaceId !== undefined && req.cwd !== undefined) throw new Error('workspaceId and cwd are exclusive')
     const id = 'sess-' + Math.random().toString(36).slice(2, 8)
-    store.set(id, mkSession(id))
+    const session = mkSession(id)
+    if (req.workspaceId) {
+      const record = workspaces.get(req.workspaceId)
+      if (!record) throw new Error('no such workspace')
+      session.cwd = record.path
+      record.sessionIds.unshift(id)
+    } else if (req.cwd) {
+      session.cwd = req.cwd
+    }
+    store.set(id, session)
     return { sessionId: id }
   },
   async prompt(req) {
@@ -53,7 +84,7 @@ const sessionController = {
   async fork(req) {
     const src = store.get(req.sessionId)
     const id = 'fork-' + Math.random().toString(36).slice(2, 8)
-    const copy = mkSession(id)
+    const copy = mkSession(id, src.cwd)
     copy.events = src.events.map((e) => ({ ...e }))
     copy.blank = false
     copy.parentSessionId = src.sessionId
@@ -134,7 +165,23 @@ const ctx = {
     },
   },
   inject: (deps, callback) => callback(ctx),
-  workspaceRegistry: { get archivedSessionIds() { return [...archived] } },
+  workspaceRegistry: {
+    get archivedSessionIds() { return [...archived] },
+    get(id) { const record = workspaces.get(id); return record && workspaceEntity(record) },
+    list() { return [...workspaces.values()].map(workspaceEntity) },
+    async resolveByPath(path) {
+      for (const record of workspaces.values()) if (record.path === path) return workspaceEntity(record)
+      return undefined
+    },
+    async create(path, title) {
+      for (const record of workspaces.values()) {
+        if (record.path === path) return workspaceEntity(record)
+      }
+      const record = { id: 'ws-' + (workspaces.size + 1), path, title: title || '', sessionIds: [] }
+      workspaces.set(record.id, record)
+      return workspaceEntity(record)
+    },
+  },
   accountController: {
     async getState() {
       return {
@@ -265,7 +312,7 @@ console.log('17 delete post ->', deleted.status, 'gone', !afterList.includes(id)
 
 // --- balance and reasoning effort ---
 const listBal = (await req('/s', { headers: { cookie } })).text
-console.log('22 list balance ->', listBal.includes('余额 ¥12.34'), 'account link', listBal.includes('href="/me"'))
+console.log('22 list balance ->', listBal.includes('¥12.34'), 'account link', listBal.includes('href="/me"'))
 
 const me = await req('/me', { headers: { cookie } })
 checkHtmlHeaders('account page', me)
@@ -299,5 +346,49 @@ console.log('29 effort shown ->', /class="mini on" disabled>高</.test(effortSho
 
 const listAfter = (await req('/s', { headers: { cookie } })).text
 console.log('28 subagent hidden ->', !listAfter.includes('sub-1'))
+
+// --- grouping and search ---
+const created2 = await req('/new', {
+  method: 'POST',
+  headers: { cookie, 'content-type': 'application/x-www-form-urlencoded' },
+  body: 'preset=standard',
+})
+const id2 = (created2.headers.get('location') || '').split('/').pop()
+const group = [...workspaces.values()][0]
+const lastRequest = createRequests[createRequests.length - 1]
+console.log('31 grouped create ->', created2.status, 'workspaceId passed', Boolean(lastRequest.workspaceId),
+  'no cwd', lastRequest.cwd === undefined, 'attached', group && group.sessionIds.includes(id2))
+
+const settingsPage = await req('/settings', { headers: { cookie } })
+console.log('32 settings page ->', settingsPage.status, 'registered', settingsPage.text.includes('已注册'),
+  'path field', settingsPage.text.includes('name="path"'), 'file', settingsPage.text.includes('.kindle-settings.json'))
+checkHtmlHeaders('settings page', settingsPage)
+
+await req(`/c/${id2}/rename`, { method: 'POST', headers: { cookie, 'content-type': 'application/x-www-form-urlencoded' }, body: 'title=' + encodeURIComponent('苹果笔记') })
+await req(`/c/${forkId}/rename`, { method: 'POST', headers: { cookie, 'content-type': 'application/x-www-form-urlencoded' }, body: 'title=' + encodeURIComponent('香蕉草图') })
+const searchPost = await req('/s', { method: 'POST', headers: { cookie, 'content-type': 'application/x-www-form-urlencoded' }, body: 'q=' + encodeURIComponent('苹果') })
+const searchHref = searchPost.headers.get('location') || ''
+const searchGet = (await req(searchHref, { headers: { cookie } })).text
+console.log('33 search ->', searchPost.status, searchHref, 'hit', searchGet.includes('苹果笔记'),
+  'miss', !searchGet.includes('香蕉草图'), 'refilled', searchGet.includes('value="苹果"'),
+  'clear', searchGet.includes('清除搜索'))
+
+const saved = await req('/settings', {
+  method: 'POST',
+  headers: { cookie, 'content-type': 'application/x-www-form-urlencoded' },
+  body: 'action=save&path=' + encodeURIComponent(cwd),
+})
+const savedPage = (await req('/settings?ok=saved', { headers: { cookie } })).text
+console.log('34 save settings ->', saved.status, saved.headers.get('location'), 'notice', savedPage.includes('默认工作区已保存'))
+
+const stray = mkSession('stray-1')
+store.set('stray-1', stray)
+const adopted = await req('/settings', {
+  method: 'POST',
+  headers: { cookie, 'content-type': 'application/x-www-form-urlencoded' },
+  body: 'action=adopt',
+})
+console.log('35 adopt old session ->', adopted.status, adopted.headers.get('location'), 'attached',
+  group && group.sessionIds.includes('stray-1'), 'listed', (await req('/s', { headers: { cookie } })).text.includes('stray-1'))
 
 for (const d of disposers) d()
