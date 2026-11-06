@@ -132,25 +132,29 @@ h1,h2,h3,h4{font-weight:bold;margin:0}
 .tb a{display:inline-block;padding:24px 16px;font-size:0.9em;line-height:1.2;color:#000}
 .tb .brand{display:inline-block;padding-left:12px;font-size:0.9em;font-weight:bold;letter-spacing:0.06em}
 
-.hd{padding:10px 24px 22px;border-bottom:3px solid #000}
+.hd{padding:8px 24px 18px;border-bottom:3px solid #000}
 .hd h1{font-size:1.16em;line-height:1.35;word-wrap:break-word}
 .hd .sub{margin:8px 0 0;font-size:0.82em;color:#555}
 
 .row{display:block;border-bottom:2px solid #ddd;color:#000}
 .row table{width:100%;border-collapse:collapse}
-.row td{padding:22px 0;vertical-align:middle}
+.row td{padding:14px 0;vertical-align:middle}
 .row td.t{padding-left:24px;padding-right:12px}
 .row td.g{width:64px;text-align:center;font-size:1.25em;color:#777}
-.row .ttl{font-family:serif;font-size:1.06em;font-weight:bold;line-height:1.42;word-wrap:break-word}
-.row .meta{margin:8px 0 0;font-size:0.85em;color:#555}
+.row .ttl{font-family:serif;font-size:1em;font-weight:bold;line-height:1.32;word-wrap:break-word}
+.row .meta{margin:5px 0 0;font-size:0.78em;color:#555}
 .row .meta .n{margin-right:14px}
 .row:active{background:#eaeaea}
-.pager{width:100%;border-collapse:collapse;table-layout:fixed;border-bottom:2px solid #ddd}
-.pager td{padding:0;border-left:2px solid #ddd}
-.pager td:first-child{border-left:0}
-.pager a,.pager span{display:block;height:96px;line-height:96px;text-align:center;font-size:0.88em}
-.pager span{color:#aaa}
-.pager a:active{background:#e8e8e8}
+.d3{width:100%;border-collapse:collapse;table-layout:fixed}
+.d3 td{padding:0;vertical-align:middle}
+.d3 td.mid{width:92px}
+.dbtn{display:block;height:76px;line-height:70px;border:3px solid #000;background:#fff;color:#000;text-align:center;font-size:0.8em;text-decoration:none}
+.dbtn:active{background:#dcdcdc}
+.dbtn.off{color:#aaa;border-color:#bbb}
+.dbtn.primary{background:#000;color:#fff;font-size:1.2em}
+.dbtn.primary:active{background:#333}
+.d3 td.prev .dbtn{margin-right:12px}
+.d3 td.next .dbtn{margin-left:12px}
 .flag{display:inline-block;border:2px solid #000;background:#000;color:#fff;padding:1px 10px;font-size:1em;line-height:1.35}
 .flag.off{background:#fff;color:#000}
 
@@ -242,7 +246,7 @@ figure.fig figcaption{margin-top:10px;font-size:0.74em;color:#444}
 
 body.ls{padding-bottom:0}
 body.ls #scroll{padding-bottom:24px}
-.dock{border-top:2px solid #000;background:#fff;padding:8px 24px 12px}
+.dock{border-top:2px solid #000;background:#fff;padding:6px 24px 8px}
 .dock .btn{height:110px;line-height:104px;font-size:1em}
 `
 
@@ -279,10 +283,6 @@ function paletteTable(): string {
     rows.push(`<tr>${cells}</tr>`)
   }
   return `<table class="palette">${rows.join('')}</table>`
-}
-
-function pagerCell(on: boolean, target: number, label: string): string {
-  return on ? `<td><a href="/s?p=${target}">${label}</a></td>` : `<td><span>${label}</span></td>`
 }
 
 function dockScript(): string {
@@ -368,11 +368,11 @@ export function renderList(
           return `<a class="row" href="/c/${id}"><table><tr><td class="t"><div class="ttl">${escapeHtml(s.title)}</div><div class="meta">${meta}</div></td><td class="g">›</td></tr></table></a>`
         })
         .join('')
-    : '<div class="empty"><p class="t">这里还没有会话</p><p class="hint">点下面的「＋ 新会话」开一个。</p></div>'
+    : '<div class="empty"><p class="t">这里还没有会话</p><p class="hint">点下面的「＋」开一个。</p></div>'
 
-  const balance = extras.balance
-    ? `<a class="row" href="/me"><table><tr><td class="t"><div class="ttl">余额 ${escapeHtml(extras.balance)}</div></td><td class="g">›</td></tr></table></a>`
-    : ''
+  // The balance lives in the top bar: it is one short wallet line, and the
+  // scroll area is worth more to a session row on an e-ink screen.
+  const balance = extras.balance ? `<a href="/me">${escapeHtml(extras.balance)}</a>` : ''
 
   const page = extras.page || 1
   const pages = extras.pages || 1
@@ -380,20 +380,24 @@ export function renderList(
   const sub = [total ? `共 ${total} 个` : '', pages > 1 ? `第 ${page} / ${pages} 页` : '']
     .filter(Boolean)
     .join(' · ')
-  const pager =
-    pages > 1
-      ? `<table class="pager"><tr>${pagerCell(page > 1, page - 1, '‹ 上一页')}${pagerCell(page < pages, page + 1, '下一页 ›')}</tr></table>`
-      : ''
+  const prev =
+    page > 1
+      ? `<a class="dbtn" href="/s?p=${page - 1}">‹ 上一页</a>`
+      : '<span class="dbtn off">‹ 上一页</span>'
+  const next =
+    page < pages
+      ? `<a class="dbtn" href="/s?p=${page + 1}">下一页 ›</a>`
+      : '<span class="dbtn off">下一页 ›</span>'
+  const dock = `<div id="dock" class="dock"><table class="d3"><tr><td class="prev">${prev}</td><td class="mid"><a class="dbtn primary" href="/new" aria-label="新会话">＋</a></td><td class="next">${next}</td></tr></table></div>`
 
   const body = `
 <div id="head">
-${toolBar('<span class="brand">DSH · Kindle</span>', '<a href="/me">账户</a><a href="/s">刷新</a>')}
+${toolBar('<span class="brand">DSH · Kindle</span>', `${balance}<a href="/s">刷新</a>`)}
 ${pageHead('会话', sub)}
 ${notice ? `<div class="alert">${escapeHtml(notice)}</div>` : ''}
 </div>
-<div id="scroll">${balance}
-${rows}</div>
-<div id="foot">${pager}<div id="dock" class="dock"><a class="btn primary" href="/new">＋ 新会话</a></div></div>
+<div id="scroll">${rows}</div>
+<div id="foot">${dock}</div>
 <script>${dockScript()}</script>`
   return shell('DSH Kindle', body, { fontSize: config.fontSize, bodyClass: 'ls' })
 }

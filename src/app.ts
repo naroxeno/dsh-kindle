@@ -10,7 +10,7 @@ const VERSION: string = JSON.parse(
   readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
 ).version
 
-const LIST_PAGE_SIZE = 4
+const LIST_PAGE_SIZE = 5
 
 class HttpError extends Error {
   status: number
