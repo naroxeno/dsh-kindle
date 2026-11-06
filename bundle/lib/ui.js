@@ -42,7 +42,7 @@ h1,h2,h3,h4{font-weight:bold;margin:0}
 .hd .sub{margin:8px 0 0;font-size:0.82em;color:#555}
 
 .row{display:block;border-bottom:2px solid #ddd;color:#000}
-.row table{width:100%;border-collapse:collapse}
+.row table{width:100%;height:100%;border-collapse:collapse}
 .row td{padding:14px 0;vertical-align:middle}
 .row td.t{padding-left:24px;padding-right:12px}
 .row td.g{width:64px;text-align:center;font-size:1.25em;color:#777}
@@ -186,16 +186,35 @@ function paletteTable() {
     return `<table class="palette">${rows.join('')}</table>`;
 }
 function dockScript() {
+    // Make the list end exactly at the bottom edge: the page must not scroll by
+    // a few pixels, and the leftover height goes into the rows instead of a
+    // white band above the dock.
     return `
 var sc=document.getElementById('scroll'),hd=document.getElementById('head'),ft=document.getElementById('foot');
-function fitFoot(){
+function fitRows(){
   if(!sc||!hd||!ft){return;}
+  var rows=sc.getElementsByTagName('a'),i;
+  for(i=0;i<rows.length;i++){rows[i].style.height='';}
   sc.style.minHeight='';
-  var h=(document.documentElement.clientHeight||window.innerHeight||0)-hd.offsetHeight-ft.offsetHeight;
-  if(h>0&&sc.offsetHeight<h){sc.style.minHeight=h+'px';}
+  var vh=document.documentElement.clientHeight||window.innerHeight||0;
+  var cs=window.getComputedStyle?window.getComputedStyle(sc,null):null;
+  var pad=cs?(parseFloat(cs.paddingBottom)||0):0;
+  var avail=vh-hd.offsetHeight-ft.offsetHeight-pad;
+  if(avail<=0){return;}
+  if(rows.length){
+    var each=Math.floor(avail/rows.length);
+    if(each>0){
+      for(i=0;i<rows.length;i++){
+        rows[i].style.boxSizing='border-box';
+        rows[i].style.webkitBoxSizing='border-box';
+        rows[i].style.height=each+'px';
+      }
+    }
+  }
+  sc.style.minHeight=avail+'px';
 }
-fitFoot();
-window.onresize=fitFoot;`;
+fitRows();
+window.onresize=fitRows;`;
 }
 function composerScript(extra) {
     return `
