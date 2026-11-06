@@ -96,10 +96,83 @@ function titleOf(item?: SessionListItem): string {
   return title
 }
 
-export async function createSession(ctx: KindleContext, cwd?: string): Promise<string> {
-  const value = await sessions().create(cwd ? { cwd } : {})
+export async function createSession(
+  ctx: KindleContext,
+  cwd?: string,
+  agentPreset?: string,
+): Promise<string> {
+  const request: { cwd?: string; agentPreset?: string } = {}
+  if (cwd) request.cwd = cwd
+  if (agentPreset) request.agentPreset = agentPreset
+  const value = await sessions().create(request)
   if (!value || !value.sessionId) throw new Error('create() returned no sessionId')
   return String(value.sessionId)
+}
+
+export interface AgentPresetEntry {
+  id: string
+  name: string
+  description: string
+  broken: string
+}
+
+export interface AgentPresetRoster {
+  presets: AgentPresetEntry[]
+  defaultId: string
+}
+
+/**
+ * Display copy for the presets DSH ships with. The registry hands back ids
+ * only; the names and one-line descriptions live in the web client's locale
+ * bundle, so the Kindle page carries its own short version.
+ */
+const BUILT_IN_PRESET_COPY: Record<string, { name: string; description: string }> = {
+  standard: {
+    name: '标准模式',
+    description: '处理代码、文件和资料，按需调用检索与终端。',
+  },
+  ptc: {
+    name: 'PTC 模式',
+    description: '标准模式全部能力，适合批量调工具再整理结果。',
+  },
+  minimal: {
+    name: '极简模式',
+    description: '只用终端和图片读取，适合测试基础表现。',
+  },
+  cordis: {
+    name: '创造模式',
+    description: '用对话定制 DSH，让 Agent 写插件、组合出自己的模式。',
+  },
+}
+
+interface PresetRegistryLike {
+  list(): Promise<Array<{ id?: unknown; name?: unknown; description?: unknown; broken?: unknown }>>
+  defaultId?: string
+}
+
+/**
+ * Reads the deployment's Agent preset roster (the 「会话模式」 a new session can
+ * run). Returns null when the deployment composes no preset registry, in which
+ * case session creation keeps its single default.
+ */
+export async function agentPresetRoster(ctx: KindleContext): Promise<AgentPresetRoster | null> {
+  const registry = (ctx as unknown as { get?: (name: string) => unknown }).get?.('agentPresets') as
+    PresetRegistryLike | undefined
+  if (!registry || typeof registry.list !== 'function') return null
+  const items = await registry.list()
+  const presets: AgentPresetEntry[] = []
+  for (const item of items || []) {
+    const id = String(item.id || '')
+    if (!id) continue
+    const copy = BUILT_IN_PRESET_COPY[id]
+    presets.push({
+      id,
+      name: String(item.name || (copy ? copy.name : id)),
+      description: String(item.description || (copy ? copy.description : '')),
+      broken: String(item.broken || ''),
+    })
+  }
+  return { presets, defaultId: String(registry.defaultId || '') }
 }
 
 export async function sendPrompt(

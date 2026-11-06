@@ -5,6 +5,7 @@ import {
   renderSession,
   renderPreview,
   renderAccount,
+  renderNewSession,
 } from '../lib/ui.js'
 
 const config = { fontSize: 30, pageSize: 6 }
@@ -30,6 +31,17 @@ const views = [
       '测试提示',
       { balance: '余额 ¥12.34' },
     ),
+    forms: false,
+  },
+  {
+    name: '新会话',
+    html: renderNewSession(config, {
+      options: [
+        { id: 'standard', name: '标准模式', description: '处理代码、文件和资料。', broken: '' },
+        { id: 'minimal', name: '极简模式', description: '只用终端和图片读取。', broken: '' },
+      ],
+      defaultId: 'standard',
+    }),
     forms: true,
   },
   {
