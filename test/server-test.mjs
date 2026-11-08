@@ -391,7 +391,7 @@ const indentOff = await req('/settings', { method: 'POST', headers: form, body: 
 const plain = (await req('/c/' + forkId, { headers: { cookie } })).text
 console.log('34b indent toggle ->', indentOn.status, indentOn.headers.get('location'), 'on', indented.includes('class="hei ind"'),
   'rule', indented.includes('body.ind .msg .body p'),
-  'switch', (await req('/settings', { headers: { cookie } })).text.includes('段首缩进 2em'),
+  'switch', (await req('/settings', { headers: { cookie } })).text.includes('文章与文件'),
   'off', indentOff.status === 303 && !plain.includes('class="hei ind"'))
 
 const stray = mkSession('stray-1')
@@ -434,8 +434,13 @@ console.log('37 file list ->', filesPage.status, 'listed', filesPage.text.includ
 const docPage = await req('/f?p=' + encodeURIComponent(reportPath) + '&from=' + encodeURIComponent('/c/' + forkId), { headers: { cookie } })
 checkHtmlHeaders('file page', docPage)
 const appendixHref = '/f?p=' + encodeURIComponent(appendixPath)
+const fileOff = await req('/settings', { method: 'POST', headers: form, body: 'action=indent&target=file&value=off' })
+const docPlain = (await req('/f?p=' + encodeURIComponent(reportPath), { headers: { cookie } })).text
+await req('/settings', { method: 'POST', headers: form, body: 'action=indent&target=file&value=on' })
 console.log('38 file preview ->', docPage.status, 'heading', docPage.text.includes('<h2>报告标题</h2>'),
-  'inner link', docPage.text.includes(appendixHref), 'back', docPage.text.includes('href="/c/' + forkId + '"'))
+  'inner link', docPage.text.includes(appendixHref), 'back', docPage.text.includes('href="/c/' + forkId + '"'),
+  'indent default on', docPage.text.includes('class="hei indart"'),
+  'indent off', fileOff.status === 303 && !docPlain.includes('class="hei indart"'))
 
 append(store.get(forkId), 'assistant/message', {
   message: { role: 'assistant', content: [{ type: 'text', text: '写好了，见 ' + reportPath + ' 和 `附录.md`。' }] },

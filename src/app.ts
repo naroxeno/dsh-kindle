@@ -42,6 +42,9 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
   // The indent is a Kindle UI preference; hang it on the config every renderer
   // already receives so no page can disagree with another.
   config.indent = Boolean(settings.indent)
+  // Articles read better indented on an e-ink screen, so that one is on unless
+  // the settings file says otherwise.
+  config.indentArt = settings.indentArt !== false
   const activeCwd = (): string => settings.workspace || config.cwd
 
   async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -122,8 +125,15 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
         return
       }
       if (String(body.get('action') || '') === 'indent') {
-        settings.indent = String(body.get('value') || '') === 'on'
-        config.indent = settings.indent
+        const on = String(body.get('value') || '') === 'on'
+        const which = String(body.get('target') || '') === 'file' ? 'file' : 'chat'
+        if (which === 'file') {
+          settings.indentArt = on
+          config.indentArt = on
+        } else {
+          settings.indent = on
+          config.indent = on
+        }
         try {
           await saveSettings(settingsFile, settings)
         } catch (error) {
@@ -137,7 +147,7 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
           )
           return
         }
-        redirect(res, '/settings?ok=indent')
+        redirect(res, '/settings?ok=indent&t=' + which)
         return
       }
       if (String(body.get('action') || '') === 'adopt') {
@@ -728,6 +738,7 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
       })),
       ungrouped: sessions.filter((item) => !member.has(item.sessionId)).length,
       indent: Boolean(settings.indent),
+      indentArt: settings.indentArt !== false,
       notice,
       settingsFile,
     }
@@ -742,7 +753,10 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
       }
     }
     if (ok === 'indent') {
-      return { text: config.indent ? '正文改为段首缩进 2em。' : '正文改回不缩进。' }
+      const article = url.searchParams.get('t') === 'file'
+      const on = article ? config.indentArt !== false : Boolean(config.indent)
+      const what = article ? '文章与文件' : '会话正文'
+      return { text: what + (on ? '改为段首缩进 2em。' : '改回不缩进。') }
     }
     if (ok === 'adopted') {
       const count = Math.max(0, Number(url.searchParams.get('n')) || 0)
@@ -914,6 +928,7 @@ function errorText(error: unknown): string {
 interface StoredSettings {
   workspace: string
   indent?: boolean
+  indentArt?: boolean
 }
 
 async function loadSettings(file: string): Promise<StoredSettings> {
@@ -921,11 +936,13 @@ async function loadSettings(file: string): Promise<StoredSettings> {
     const value = JSON.parse(await readFile(file, 'utf8')) as {
       workspace?: unknown
       indent?: unknown
+      indentArt?: unknown
     } | null
     const text = value && typeof value.workspace === 'string' ? expandHome(value.workspace) : ''
     return {
       workspace: text && isAbsolute(text) ? text : '',
       indent: Boolean(value && value.indent === true),
+      indentArt: !(value && value.indentArt === false),
     }
   } catch (error) {
     return { workspace: '' }

@@ -24,8 +24,10 @@ interface ListItem {
 interface ShellOptions {
   fontSize?: number
   bodyClass?: string
-  /** Opt-in 2em first-line indent for prose paragraphs. */
+  /** 2em first-line indent for chat replies (opt-in). */
   indent?: boolean
+  /** 2em first-line indent for articles and Markdown files (opt-out). */
+  indentArt?: boolean
 }
 
 export interface ListExtras {
@@ -242,8 +244,10 @@ input[type=text],input[type=password]{display:block;width:100%;height:104px;padd
 .msg .body > *:first-child{margin-top:0}
 .msg .body > *:last-child{margin-bottom:0}
 .msg .body p{margin:16px 0}
-/* Chinese reading habit: a two-character first-line indent, opt-in. */
+/* Chinese reading habit: a two-character first-line indent. Chats opt in,
+   articles and Markdown files opt out. */
 body.ind .msg .body p{text-indent:2em}
+body.indart .msg .body p{text-indent:2em}
 .msg .body h2,.msg .body h3,.msg .body h4{font-size:1.04em;line-height:1.4;margin:28px 0 12px}
 .msg .body ul,.msg .body ol{margin:16px 0;padding-left:40px}
 .msg .body li{margin:8px 0}
@@ -292,7 +296,9 @@ figure.fig figcaption{margin-top:10px;font-size:0.74em;color:#444}
 
 function shell(title: string, body: string, opts: ShellOptions = {}): string {
   const fontSize = opts.fontSize || 30
-  const classes = [opts.bodyClass || '', opts.indent ? 'ind' : ''].filter(Boolean).join(' ')
+  const classes = [opts.bodyClass || '', opts.indent ? 'ind' : '', opts.indentArt ? 'indart' : '']
+    .filter(Boolean)
+    .join(' ')
   const bodyClass = classes ? ` class="${classes}"` : ''
   return `<!DOCTYPE html>
 <html lang="zh-CN"><head><meta charset="utf-8">
@@ -616,6 +622,7 @@ export interface SettingsView {
   query?: string
   ungrouped: number
   indent?: boolean
+  indentArt?: boolean
   notice?: SettingsNotice
   settingsFile?: string
 }
@@ -665,16 +672,24 @@ export function renderSettings(config: KindleConfig, view: SettingsView): string
     ? `<p class="hint">设置存在 ${escapeHtml(view.settingsFile)}</p>`
     : ''
 
-  // Reading preferences live on this page too: one tap toggles the 2em
-  // first-line indent that Chinese prose expects, and Markdown bodies follow.
-  const indent = `<div class="sect">排版</div>
+  // Reading preferences: chat replies keep the flush left margin by default,
+  // articles and Markdown files start indented unless told otherwise.
+  const row = (
+    target: string,
+    label: string,
+    on: boolean,
+  ): string => `<div class="lbl">${label}</div>
 <form method="post" action="/settings">
 <input type="hidden" name="action" value="indent">
+<input type="hidden" name="target" value="${target}">
 <table class="seg"><tr>
-<td><button type="submit" name="value" value="off" class="mini${view.indent ? '' : ' on'}"${view.indent ? '' : ' disabled'}>不缩进</button></td>
-<td><button type="submit" name="value" value="on" class="mini${view.indent ? ' on' : ''}"${view.indent ? ' disabled' : ''}>段首缩进 2em</button></td>
+<td><button type="submit" name="value" value="off" class="mini${on ? '' : ' on'}"${on ? '' : ' disabled'}>不缩进</button></td>
+<td><button type="submit" name="value" value="on" class="mini${on ? ' on' : ''}"${on ? ' disabled' : ''}>缩进 2em</button></td>
 </tr></table>
-</form>
+</form>`
+  const indent = `<div class="sect">排版</div>
+${row('chat', '会话正文', Boolean(view.indent))}
+${row('file', '文章与文件', Boolean(view.indentArt))}
 <p class="hint">只作用于正文段落；标题、列表、代码、表格不受影响。</p>`
 
   const body = `
@@ -964,7 +979,7 @@ ${pageHead(view.name, sub)}
   return shell(view.name, body, {
     fontSize: config.fontSize,
     bodyClass: 'hei',
-    indent: config.indent,
+    indentArt: config.indentArt,
   })
 }
 
