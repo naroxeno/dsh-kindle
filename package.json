@@ -1,6 +1,6 @@
 {
   "name": "dsh-kindle",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Server-rendered web UI for DeepSeek Harness on e-readers (Kindle Paperwhite, WebKit 534): formula input with AsciiMath/LaTeX, session management, balance and reasoning-effort controls, no JavaScript framework.",
   "keywords": [
     "dsh",
@@ -89,6 +89,7 @@
     "lib/",
     "prompt/",
     "docs/",
+    "scripts/set-files-pin.mjs",
     "cordis.patch.yml",
     "README.md",
     "LICENSE",

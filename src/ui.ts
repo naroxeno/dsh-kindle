@@ -102,6 +102,13 @@ export interface FilesView {
   truncated?: boolean
 }
 
+export interface FilesPinView {
+  next?: string
+  error?: string
+  wait?: number
+  missing?: boolean
+}
+
 export interface TextView {
   path: string
   name: string
@@ -332,6 +339,7 @@ figure.fig figcaption{margin-top:10px;font-size:0.74em;color:#444}
 .newbtn:active{background:#333}
 .stbtn{display:block;width:100%;height:84px;padding:0;border:0;border-bottom:2px solid #000;background:#f1f1f1;color:#000;text-align:center;font:inherit;font-size:0.86em}
 .stbtn:active{background:#d0d0d0}
+.pin{height:132px;font-size:2em;letter-spacing:.32em;text-align:center;padding-left:.32em}
 `
 
 function shell(title: string, body: string, opts: ShellOptions = {}): string {
@@ -421,6 +429,31 @@ ${failed ? '<div class="alert">令牌不对，再试一次。</div>' : ''}
 <p class="hint">省事的做法：在电脑上打开日志里打印的登录链接（带 ?t=…），把它抄成 Kindle 的地址打开一次，之后就不用再输令牌了。</p>
 </div>`
   return shell('登录', body, { fontSize: config.fontSize, indent: config.indent })
+}
+
+export function renderFilesPin(config: KindleConfig, view: FilesPinView = {}): string {
+  const message = view.missing
+    ? '文件密码还没有设置，先让管理员配置 .kindle-files-pin。'
+    : view.wait
+      ? '尝试次数太多，请 ' + view.wait + ' 秒后再试。'
+      : view.error || ''
+  const form = view.missing
+    ? ''
+    : `<form method="post" action="/files/unlock">
+  <input type="hidden" name="next" value="${escapeHtml(view.next || '/files')}">
+  <div class="lbl">密码</div>
+  <input class="pin" type="text" name="pin" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off">
+  <p class="hint">六位数字。文件列表、正文和图片都走这一道；解锁后 1 小时有效，过期重新输入。</p>
+  <div class="stack"><button type="submit" class="btn primary">解锁</button></div>
+</form>`
+  const body = `
+${toolBar('<a href="/s">‹ 会话</a>', '')}
+${pageHead('文件密码', view.missing ? '' : '6 位数字，1 小时内有效')}
+<div class="pad">
+${message ? '<div class="alert err">' + escapeHtml(message) + '</div>' : ''}
+${form}
+</div>`
+  return shell('文件密码', body, { fontSize: config.fontSize, indent: config.indent })
 }
 
 export function renderError(config: KindleConfig, status: number, message: string): string {

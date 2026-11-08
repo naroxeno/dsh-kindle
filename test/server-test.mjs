@@ -214,7 +214,7 @@ subagentSession.parentSessionId = 'sess-parent'
 subagentSession.projections = { values: { title: '子代理' } }
 store.set('sub-1', subagentSession)
 
-apply(ctx, { host: '127.0.0.1', port: 8091, cwd, token: 'secret', fontSize: 30, pageSize: 6 })
+apply(ctx, { host: '127.0.0.1', port: 8091, cwd, token: 'secret', fontSize: 30, pageSize: 6, filesPin: '246810' })
 await new Promise((r) => setTimeout(r, 300))
 
 const base = 'http://127.0.0.1:8091'
@@ -242,7 +242,7 @@ console.log('1 unauth /s ->', noauth.status, /需要访问令牌/.test(noauth.te
 
 const login = await req('/login', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: 'token=secret&next=%2Fs' })
 console.log('2 login ->', login.status, login.headers.get('set-cookie') ? 'cookie set' : 'no cookie')
-const cookie = 'kd=secret'
+let cookie = 'kd=secret'
 
 const list0 = await req('/s', { headers: { cookie } })
 console.log('3 list ->', list0.status, /还没有会话/.test(list0.text))
@@ -425,6 +425,26 @@ const appendixPath = join(cwd, '附录.md')
 writeFileSync(appendixPath, '# 附录\n')
 const textPath = join(cwd, '笔记.txt')
 writeFileSync(textPath, 'not markdown')
+
+const pinGate = await req('/files?s=' + forkId, { headers: { cookie } })
+console.log('36a file pin gate ->', pinGate.status, pinGate.text.includes('文件密码'),
+  'no entries', !pinGate.text.includes('交付报告.md'))
+
+const wrongPin = await req('/files/unlock', {
+  method: 'POST',
+  headers: { cookie, 'content-type': 'application/x-www-form-urlencoded' },
+  body: 'pin=000000&next=' + encodeURIComponent('/files?s=' + forkId),
+})
+console.log('36b wrong pin ->', wrongPin.status, wrongPin.text.includes('密码不对'))
+
+const unlocked = await req('/files/unlock', {
+  method: 'POST',
+  headers: { cookie, 'content-type': 'application/x-www-form-urlencoded' },
+  body: 'pin=246810&next=' + encodeURIComponent('/files?s=' + forkId),
+})
+const kdf = (unlocked.headers.get('set-cookie') || '').split(';')[0]
+console.log('36c unlock ->', unlocked.status, unlocked.headers.get('location'), kdf.startsWith('kdf='))
+if (kdf) cookie = cookie + '; ' + kdf
 
 const filesPage = await req('/files?s=' + forkId, { headers: { cookie } })
 checkHtmlHeaders('files page', filesPage)

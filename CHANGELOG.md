@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.6.1 — 2026-11-09
+
+安全补强，不改界面结构。
+
+- 登录 token 换成 32 字符随机串（`randomBytes(24).base64url`），旧的 6 位 `kindle` 作废。轮换 `.kindle-token` 后下一次请求即生效，不用重启：`createApp` 在鉴权前把 `host.auth` 同步成新哈希，旧 `kd` cookie 立刻失效。登录 cookie 加 `SameSite=Lax`。
+- 文件页（`/files`、`/f`、`/t`、`/i`、`/img`）加独立 6 位密码，默认 1 小时。密码只存 scrypt 哈希（`.kindle-files-pin`），解锁 cookie 是 HMAC 签名的过期时间（密钥 `.kindle-files-key`，0600，自动生成）；连错 5 次锁 60 秒。
+- 新增 `scripts/set-files-pin.mjs`，一条命令重设文件密码。
+- server-test 增加 PIN 门：未解锁拦截、错码提示、正确码 303 + cookie 后放行。
+
 ## 0.6.0 — 2026-11-09
 
 这一版把「文件」做成只读文件管理器，并清掉 Kindle 上所有依赖滚动、锚点才能完成的交互。

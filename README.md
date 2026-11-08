@@ -82,6 +82,8 @@ dsh plugin --profile web add dsh-kindle
 | `fontSize` | `30` | 正文 px。Kindle 上 28–34 比较舒服 |
 | `pageSize` | `6` | 会话页最多先渲染多少条消息，更早的点「↑ 更早的消息」加载 |
 | `token` | `''` | 空 = 自动生成；`off` = 关闭鉴权（只建议本机）；也可以直接写死一个字符串 |
+| `filesPin` | `''` | 文件页 6 位密码；空 = 读 `<cwd>/.kindle-files-pin`，也可直接写死（不推荐） |
+| `filesPinTtl` | `3600` | 文件解锁有效期（秒） |
 | `hotReload` | `true` | 改完 `lib/*.js` / `prompt/kindle.md` 后下一次请求自动换新代码；设成 `false` 则恢复“重启才生效” |
 
 登录：启动日志里会打印一条 `kindle login link`，在 Kindle 上打开一次即可（会种下一年期
@@ -92,7 +94,22 @@ kindle UI listening on http://192.168.1.10:8090/s (workspace /home/you/kindle-ws
 kindle login link (open once on the device): http://192.168.1.10:8090/login?t=<token>
 ```
 
-自动生成的 token 存在 `<cwd>/.kindle-token`（权限 600）。想换一个：删掉这个文件再重启。
+自动生成的 token 是 32 字符随机串，存在 `<cwd>/.kindle-token`（权限 600）。想换：直接覆盖这个文件，下一次请求生效，不用重启；旧 cookie 会立即失效。
+
+### 文件密码
+
+文件页单独一道 6 位数字密码，默认 1 小时。它和登录 token 分开：拿到登录 cookie 也读不了文件。
+
+密码只存 scrypt 哈希在 `<cwd>/.kindle-files-pin`；解锁 cookie 是 `exp.hmac`，密钥在
+`<cwd>/.kindle-files-key`（600，首次自动生成）。连错 5 次锁 60 秒。
+
+改密码（不用重启）：
+
+```
+node scripts/set-files-pin.mjs ~/kindle-ws 246810
+```
+
+没有密码文件时文件页保持锁定，页面会提示先配置。
 
 ### 默认工作区与分组
 
@@ -121,7 +138,7 @@ Kindle 新建的会话会挂在「默认工作区」这个分组里，不再出�
 
 ## 安全
 
-**这个 token 等价于 Host 的 shell 权限。** Kindle 会话里运行的 Agent 用的是你 profile 的
+**这个 token 等价于 Host 的 shell 权限。** 登录 token 是 32 字符随机串（2026-11-09 起），旧的 6 位 token 已作废。 Kindle 会话里运行的 Agent 用的是你 profile 的
 权限（很多人是 `danger-full-access`），拿到 token 的人可以在你的机器上执行命令。
 
 - 不要把它暴露到公网。学校里用，建议 frp 的 `type = http` 或 `type = tcp` 穿透，
@@ -152,7 +169,7 @@ npm run pack:check
 调试页 `/debug`（需要登录）会输出插件版本、热重载代次、提示词注册状态、余额服务与模型目录的可用性。
 
 ```
-kindle-ui 0.6.0
+kindle-ui 0.6.1
 hot: generation 1 (0 reloads, auto on)
 {"registered":1,"lastError":"","section":"kindle:display"}
 prompt bytes 1066

@@ -1,11 +1,13 @@
+import { createHash, createHmac, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto'
 import { createReadStream, readFileSync, statSync } from 'node:fs'
 import { mkdir, open, readFile, readdir, stat, writeFile } from 'node:fs/promises'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { homedir } from 'node:os'
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import type { Generation } from './generation.js'
-import type { KindleApp, KindleContext, KindleHost, ModelChoice } from './host.js'
+import type { KindleApp, KindleContext, KindleHost, KindleLogger, ModelChoice } from './host.js'
 import type { Transcript, TranscriptMessage, WorkspaceEntry } from './sessions.js'
+import { renderFilesPin } from './ui.js'
 import type { FileRow, ListExtras, SettingsNotice, SettingsView } from './ui.js'
 
 const STAMP = new URL(import.meta.url).search
@@ -16,6 +18,13 @@ const VERSION: string = JSON.parse(
 const LIST_MAX = 60
 const FILE_PAGE_SIZE = 60
 const MARKDOWN_MAX_BYTES = 1024 * 1024
+
+/** A second, separate secret for the file browser: six digits, one hour. */
+const FILES_PIN_FILE = '.kindle-files-pin'
+const FILES_KEY_FILE = '.kindle-files-key'
+const FILES_COOKIE = 'kdf'
+const FILES_PIN_TTL = 3600
+const FILE_ROUTES = new Set(['/files', '/f', '/t', '/i', '/img'])
 const TEXT_EXTS = new Set([
   '.txt',
   '.text',
@@ -105,6 +114,11 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
   // dsh restart, so the file survives hot generations.
   const settingsFile = join(config.cwd, '.kindle-settings.json')
   const settings = await loadSettings(settingsFile)
+  // The shell hashes the token only at mount, so a rotated .kindle-token would
+  // wait for a Host restart. Sync it here instead: this runs before the request
+  // is authorized, and hot generations pick the new hash up immediately.
+  await syncAuthToken(host)
+  const filesAccess = await createFilesAccess(config, logger)
   // The indent is a Kindle UI preference; hang it on the config every renderer
   // already receives so no page can disagree with another.
   config.indent = Boolean(settings.indent)
@@ -135,6 +149,16 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
     const url = new URL(req.url || '/', 'http://kindle.invalid')
     const path = url.pathname
     const method = (req.method || 'GET').toUpperCase()
+
+    if (method === 'POST' && path === '/files/unlock') {
+      await filesAccess.unlock(req, res)
+      return
+    }
+    if (FILE_ROUTES.has(path) && !filesAccess.allowed(req)) {
+      const notice = filesAccess.notice(req)
+      sendHtml(res, 200, renderFilesPin(config, { next: path + url.search, ...notice }))
+      return
+    }
 
     if (method === 'GET' && (path === '/' || path === '/index.html')) {
       redirect(res, '/s')
@@ -1137,6 +1161,228 @@ function escapeText(value: unknown): string {
 
 function errorText(error: unknown): string {
   return String((error as { message?: unknown } | null | undefined)?.message || error)
+}
+
+/**
+ * Rotate the login token without restarting the Host.
+ *
+ * lib/hot.js hashes the token once at mount and is imported only once per
+ * process, so editing .kindle-token alone would leave the old hash accepting
+ * cookies until the next restart. createApp runs before respond() authorizes a
+ * request, so updating host.auth here takes effect on the very next request.
+ * Explicit config.token and DSH_KINDLE_TOKEN still win, exactly like the shell.
+ */
+async function syncAuthToken(host: KindleHost): Promise<void> {
+  const config = host.config
+  if (config.token && config.token !== 'off') return
+  if (String(process.env.DSH_KINDLE_TOKEN || '').trim()) return
+  try {
+    const stored = (await readFile(join(config.cwd, '.kindle-token'), 'utf8')).trim()
+    if (!stored) return
+    // Assign both every time: an earlier buggy sync could have left the token
+    // field already updated while the hash was in the wrong shape, and equality
+    // on the token alone would then never repair it.
+    host.auth.token = stored
+    host.auth.hash = createHash('sha256').update(stored, 'utf8').digest()
+  } catch {
+    /* no token file: keep the hash the shell mounted with */
+  }
+}
+
+interface FilesAccess {
+  allowed(req: IncomingMessage): boolean
+  notice(req: IncomingMessage): { error?: string; wait?: number; missing?: boolean }
+  unlock(req: IncomingMessage, res: ServerResponse): Promise<void>
+}
+
+interface PinHash {
+  salt: Buffer
+  digest: Buffer
+  cost: number
+}
+
+/**
+ * Gates the file pages (/files, /f, /t, /i and /img) behind a six-digit PIN.
+ *
+ * The PIN itself is only stored as a scrypt hash in <cwd>/.kindle-files-pin.
+ * The cookie holds an expiry plus an HMAC over it, so a forged or edited value
+ * cannot extend the hour, and it is scoped separately from the login cookie:
+ * a stolen session still cannot read files.
+ */
+async function createFilesAccess(
+  config: KindleHost['config'],
+  logger: KindleLogger,
+): Promise<FilesAccess> {
+  const ttl = clampInt(config.filesPinTtl, 60, 7 * 24 * 3600, FILES_PIN_TTL)
+  const pinFile = join(config.cwd, FILES_PIN_FILE)
+  let pin: PinHash | null = null
+  if (config.filesPin && /^\d{6}$/.test(config.filesPin)) {
+    pin = hashPin(config.filesPin)
+  } else {
+    try {
+      pin = parsePin(await readFile(pinFile, 'utf8'))
+    } catch (error) {
+      if ((error as { code?: string }).code !== 'ENOENT') {
+        logger.warn?.('kindle-ui: cannot read ' + pinFile + ': ' + errorText(error))
+      }
+      logger.warn?.('kindle-ui: file PIN missing (' + pinFile + '); file pages stay locked')
+    }
+  }
+  const key = await loadFilesKey(join(config.cwd, FILES_KEY_FILE), logger)
+  const failures = new Map<string, { count: number; until: number }>()
+
+  function waitSeconds(req: IncomingMessage): number {
+    const state = failures.get(clientKey(req))
+    if (!state || state.until <= Date.now()) return 0
+    return Math.ceil((state.until - Date.now()) / 1000)
+  }
+
+  return {
+    allowed(req) {
+      const raw = parseCookies(req.headers.cookie || '')[FILES_COOKIE]
+      if (!raw) return false
+      const dot = raw.indexOf('.')
+      if (dot <= 0) return false
+      const exp = Number(raw.slice(0, dot))
+      if (!Number.isFinite(exp) || exp <= Date.now()) return false
+      const want = createHmac('sha256', key).update('files:' + exp).digest()
+      const got = Buffer.from(raw.slice(dot + 1), 'base64url')
+      return got.length === want.length && timingSafeEqual(got, want)
+    },
+    notice(req) {
+      const wait = waitSeconds(req)
+      if (wait > 0) return { error: '尝试次数太多，请稍后再试。', wait }
+      if (!pin) return { missing: true }
+      return {}
+    },
+    async unlock(req, res) {
+      const body = await readForm(req)
+      const next = safeFileNext(String(body.get('next') || ''))
+      const send = (extra: { error?: string; wait?: number; missing?: boolean }) =>
+        sendHtml(res, 200, renderFilesPin(config, { next, ...extra }))
+
+      const wait = waitSeconds(req)
+      if (wait > 0) {
+        send({ error: '尝试次数太多，请稍后再试。', wait })
+        return
+      }
+      if (!pin) {
+        send({ missing: true })
+        return
+      }
+      const submitted = String(body.get('pin') || '').trim()
+      if (!/^\d{6}$/.test(submitted) || !verifyPin(submitted, pin)) {
+        const state = failures.get(clientKey(req)) || { count: 0, until: 0 }
+        state.count += 1
+        if (state.count >= 5) {
+          state.count = 0
+          state.until = Date.now() + 60_000
+        }
+        failures.set(clientKey(req), state)
+        send({ error: '密码不对，再试一次。' })
+        return
+      }
+      failures.delete(clientKey(req))
+      const exp = Date.now() + ttl * 1000
+      const sig = createHmac('sha256', key).update('files:' + exp).digest('base64url')
+      res.writeHead(303, {
+        location: next,
+        'set-cookie':
+          FILES_COOKIE + '=' + exp + '.' + sig + '; Path=/; Max-Age=' + ttl + '; HttpOnly; SameSite=Lax',
+      })
+      res.end()
+    },
+  }
+}
+
+function clientKey(req: IncomingMessage): string {
+  return String(req.socket?.remoteAddress || 'local')
+}
+
+/** Only bounce back into the gated pages, never to an arbitrary host/path. */
+function safeFileNext(value: string): string {
+  const text = value.slice(0, 500)
+  if (text.startsWith('//')) return '/files'
+  return /^\/(?:files|f\?|t\?|i\?|img\?)/.test(text) ? text : '/files'
+}
+
+function readForm(req: IncomingMessage, limit = 64 * 1024): Promise<URLSearchParams> {
+  return new Promise<URLSearchParams>((done, fail) => {
+    const chunks: Buffer[] = []
+    let size = 0
+    req.on('data', (chunk: Buffer) => {
+      size += chunk.length
+      if (size > limit) {
+        fail(new HttpError(413, '请求太大。'))
+        req.destroy()
+        return
+      }
+      chunks.push(chunk)
+    })
+    req.on('end', () => done(new URLSearchParams(Buffer.concat(chunks).toString('utf8'))))
+    req.on('error', fail)
+  })
+}
+
+function hashPin(pin: string, salt = randomBytes(16)): PinHash {
+  const cost = 16384
+  return { salt, cost, digest: scryptSync(pin, salt, 32, { N: cost, r: 8, p: 1 }) }
+}
+
+function parsePin(text: string): PinHash {
+  const parts = String(text).trim().split('$')
+  if (parts.length !== 6 || parts[0] !== 'scrypt') throw new Error('bad PIN file')
+  const cost = Number(parts[1])
+  const salt = Buffer.from(parts[4], 'hex')
+  const digest = Buffer.from(parts[5], 'hex')
+  if (!Number.isInteger(cost) || cost < 1024 || !salt.length || digest.length !== 32) {
+    throw new Error('bad PIN file')
+  }
+  return { salt, digest, cost }
+}
+
+function verifyPin(pin: string, stored: PinHash): boolean {
+  try {
+    const digest = scryptSync(pin, stored.salt, stored.digest.length, { N: stored.cost, r: 8, p: 1 })
+    return timingSafeEqual(digest, stored.digest)
+  } catch {
+    return false
+  }
+}
+
+async function loadFilesKey(file: string, logger: KindleLogger): Promise<Buffer> {
+  try {
+    const text = (await readFile(file, 'utf8')).trim()
+    if (/^[0-9a-f]{64}$/i.test(text)) return Buffer.from(text, 'hex')
+  } catch (error) {
+    if ((error as { code?: string }).code !== 'ENOENT') {
+      logger.warn?.('kindle-ui: cannot read ' + file + ': ' + errorText(error))
+    }
+  }
+  const key = randomBytes(32)
+  try {
+    await mkdir(dirname(file), { recursive: true })
+    await writeFile(file, key.toString('hex') + '\n', { mode: 0o600 })
+  } catch (error) {
+    logger.warn?.('kindle-ui: cannot persist the file cookie key: ' + errorText(error))
+  }
+  return key
+}
+
+function parseCookies(header: string): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const chunk of header.split(';')) {
+    const index = chunk.indexOf('=')
+    if (index === -1) continue
+    const name = chunk.slice(0, index).trim()
+    if (!name) continue
+    try {
+      out[name] = decodeURIComponent(chunk.slice(index + 1).trim())
+    } catch {
+      /* malformed cookie: ignore it */
+    }
+  }
+  return out
 }
 
 interface StoredSettings {

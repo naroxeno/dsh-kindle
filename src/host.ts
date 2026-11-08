@@ -5,6 +5,10 @@ export interface KindleConfig {
   host: string
   port: number
   token: string
+  /** Six-digit PIN for the file browser; normally read from .kindle-files-pin. */
+  filesPin?: string
+  /** Seconds a file unlock lasts. Defaults to one hour. */
+  filesPinTtl?: number
   cwd: string
   fontSize: number
   pageSize: number
@@ -297,7 +301,8 @@ export interface KindleContext {
 export interface KindleHost {
   ctx: KindleContext
   config: KindleConfig
-  auth: { token: string; hash: string | null }
+  /** hash is the raw sha256 digest (Buffer); hot.js compares it with timingSafeEqual. */
+  auth: { token: string; hash: Buffer | string | null }
   services: KindleServices
   logger: KindleLogger
   hot?: () => KindleHotStatus
