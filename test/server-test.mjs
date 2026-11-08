@@ -437,6 +437,10 @@ writeFileSync(join(subDir, '说明.md'), '# 说明\n\n这是子目录。\n')
 writeFileSync(join(subDir, '图.png'), Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
   'base64'))
+const licensePath = join(cwd, 'LICENSE')
+writeFileSync(licensePath, 'MIT License\n\nPermission is hereby granted, free of charge.\n')
+writeFileSync(join(cwd, 'data.bin'), Buffer.from([0, 1, 2, 0, 3]))
+const licensePage = await req('/t?p=' + encodeURIComponent(licensePath), { headers: { cookie } })
 const rootList = (await req('/files?s=' + forkId, { headers: { cookie } })).text
 const subList = (await req('/files?p=' + encodeURIComponent(subDir) + '&s=' + forkId,
   { headers: { cookie } })).text
@@ -449,7 +453,10 @@ console.log('37b browser ->', 'dir row', rootList.includes('资料'),
   'sub md', subList.includes('说明.md'), 'sub img', subList.includes('图.png'),
   'up', subList.includes('上一级'), 'crumb', subList.includes('资料'),
   'md opens', subMd.includes('这是子目录'), 'text', textView.status, textView.text.includes('class="plain"'),
-  textView.text.includes('not markdown'))
+  textView.text.includes('not markdown'),
+  'license by meta', licensePage.status === 200 && licensePage.text.includes('MIT License'),
+  'license link', rootList.includes('/t?p=' + encodeURIComponent(licensePath)),
+  'binary blocked', !rootList.includes('/t?p=' + encodeURIComponent(join(cwd, 'data.bin'))))
 
 const docPage = await req('/f?p=' + encodeURIComponent(reportPath) + '&from=' + encodeURIComponent('/c/' + forkId), { headers: { cookie } })
 checkHtmlHeaders('file page', docPage)

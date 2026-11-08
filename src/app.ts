@@ -1,5 +1,5 @@
 import { createReadStream, readFileSync, statSync } from 'node:fs'
-import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises'
+import { mkdir, open, readFile, readdir, stat, writeFile } from 'node:fs/promises'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { homedir } from 'node:os'
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
@@ -42,6 +42,45 @@ const TEXT_EXTS = new Set([
   '.html',
   '.xml',
   '.sql',
+])
+const BINARY_EXTS = new Set([
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.gif',
+  '.webp',
+  '.svg',
+  '.pdf',
+  '.zip',
+  '.gz',
+  '.tgz',
+  '.tar',
+  '.bz2',
+  '.xz',
+  '.7z',
+  '.mp3',
+  '.mp4',
+  '.m4a',
+  '.wav',
+  '.ogg',
+  '.webm',
+  '.woff',
+  '.woff2',
+  '.ttf',
+  '.otf',
+  '.eot',
+  '.wasm',
+  '.jar',
+  '.class',
+  '.exe',
+  '.so',
+  '.dylib',
+  '.o',
+  '.a',
+  '.db',
+  '.sqlite',
+  '.parquet',
+  '.ico',
 ])
 
 class HttpError extends Error {
@@ -414,7 +453,7 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
     }
 
     if (method === 'GET' && path === '/t') {
-      const file = resolveReadableText(String(url.searchParams.get('p') || ''), readRoots())
+      const file = await resolveReadableText(String(url.searchParams.get('p') || ''), readRoots())
       let info
       try {
         info = statSync(file)
@@ -931,12 +970,40 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
     return file
   }
 
-  function fileKind(name: string): FileRow['kind'] {
-    const ext = extname(name).toLowerCase()
+  async function fileKind(file: string): Promise<FileRow['kind']> {
+    const ext = extname(file).toLowerCase()
     if (ext === '.md' || ext === '.markdown') return 'md'
     if (TEXT_EXTS.has(ext)) return 'text'
     if (IMAGE_MIME[ext]) return 'image'
-    return 'other'
+    // LICENSE, Makefile and friends have no extension, and a wrong
+    // extension is common too, so fall back to sniffing the first block.
+    if (BINARY_EXTS.has(ext)) return 'other'
+    return (await looksLikeText(file)) ? 'text' : 'other'
+  }
+
+  async function looksLikeText(file: string): Promise<boolean> {
+    let handle
+    try {
+      handle = await open(file, 'r')
+    } catch (error) {
+      return false
+    }
+    try {
+      const buffer = Buffer.alloc(8192)
+      const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0)
+      const sample = buffer.subarray(0, bytesRead)
+      if (sample.includes(0)) return false
+      const decoder = new TextDecoder('utf-8')
+      const text = decoder.decode(sample)
+      if (!text.includes('\uFFFD')) return true
+      if (bytesRead < buffer.length) return false
+      const trimmed = decoder.decode(sample.subarray(0, Math.max(0, bytesRead - 4)))
+      return !trimmed.includes('\uFFFD')
+    } catch (error) {
+      return false
+    } finally {
+      await handle.close()
+    }
   }
 
   async function listDirEntries(dir: string): Promise<FileRow[]> {
@@ -965,7 +1032,7 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
           relative: entry.name,
           size: info.size,
           updatedAt: info.mtimeMs,
-          kind: fileKind(entry.name),
+          kind: await fileKind(full),
         })
       } catch (error) {}
     }
@@ -975,14 +1042,14 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
     return dirs.concat(files).slice(0, 300)
   }
 
-  function resolveReadableText(raw: string, roots: string[]): string {
+  async function resolveReadableText(raw: string, roots: string[]): Promise<string> {
     if (!raw) throw new HttpError(404, '没有指定文件。')
     const wanted = expandHome(raw)
     const file = isAbsolute(wanted) ? wanted : resolve(roots[0] || process.cwd(), wanted)
     if (!roots.some((root) => isInside(file, root))) {
       throw new HttpError(403, '这个文件不在可读目录里。')
     }
-    if (fileKind(file) !== 'text') throw new HttpError(400, '现在只支持文本文件预览。')
+    if ((await fileKind(file)) !== 'text') throw new HttpError(400, '这个文件不是文本，不能预览。')
     return file
   }
 
