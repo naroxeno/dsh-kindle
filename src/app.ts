@@ -350,24 +350,6 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
 
     await prompt.ensureKindlePrompt(ctx.sessionController, sessionId)
 
-    // The composer is its own page: on e-ink the textarea and the whole formula
-    // palette sat three screens below the transcript, so writing a reply meant
-    // scrolling past everything. One tap on the strip opens this page instead.
-    if (method === 'GET' && action === 'input') {
-      const current = await sessionsApi.sessionState(ctx, sessionId, activeCwd())
-      sendHtml(
-        res,
-        200,
-        ui.renderComposer(config, {
-          sessionId,
-          title: current ? current.title : '',
-          running: current ? current.running : false,
-          model: await modelInfo(ctx, sessionsApi, sessionId),
-        }),
-      )
-      return
-    }
-
     if (method === 'GET' && action === '') {
       const window = clampInt(
         Number(url.searchParams.get('n')) || config.pageSize,
@@ -396,6 +378,7 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
           sessionId,
           title: transcript.title,
           cwd: activeCwd(),
+          model: await modelInfo(ctx, sessionsApi, sessionId),
           messages: visible,
           running: transcript.running,
           updatedAt: transcript.updatedAt,
@@ -549,7 +532,7 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
       const known = model.efforts.some((entry) => entry.id === effort)
       if (!known) throw new HttpError(400, '这个模型不支持该思考强度。')
       await sessionsApi.setReasoningEffort(ctx, sessionId, effort)
-      redirect(res, '/c/' + encodeURIComponent(sessionId) + '/input')
+      redirect(res, '/c/' + encodeURIComponent(sessionId) + '#composer')
       return
     }
 

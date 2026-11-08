@@ -61,6 +61,8 @@ export interface SessionView {
   /** Working directory used to resolve relative Markdown links in messages. */
   cwd?: string
   messages: UiMessage[]
+  /** Text kept in the reply box after a rejected send or an edit. */
+  draft?: string
   running?: boolean
   hasOlder?: boolean
   hasTools?: boolean
@@ -69,13 +71,7 @@ export interface SessionView {
   fresh?: boolean
   updatedAt?: number
   version?: string
-}
-
-export interface ComposerView {
-  sessionId: string
-  title?: string
-  draft?: string
-  running?: boolean
+  /** Reasoning-effort choices for the composer at the bottom. */
   model?: UiModelChoice | null
 }
 
@@ -350,7 +346,6 @@ function ins(s){
   try{ta.focus();if(typeof b==='number'){ta.selectionStart=ta.selectionEnd=b+s.length;}}catch(e){}
 }
 function doPreview(){document.getElementById('preview-msg').value=ta.value;document.getElementById('preview-form').submit();return false;}
-function doStop(){document.getElementById('stop-form').submit();return false;}
 ${extra}`
 }
 
@@ -767,7 +762,6 @@ ${pageHead('工具调用', sub)}
 
 export function renderSession(config: KindleConfig, view: SessionView): string {
   const id = escapeHtml(view.sessionId)
-  const compose = '/c/' + id + '/input'
   const older = view.hasOlder
     ? '<a class="older" href="/c/' +
       id +
@@ -781,7 +775,7 @@ export function renderSession(config: KindleConfig, view: SessionView): string {
 ${toolBar(`<a href="/s">‹ 列表</a>`, `<a href="/c/${id}">刷新</a>`)}
 ${pageHead(view.title || '会话', formatTime(view.updatedAt) ? `更新于 ${formatTime(view.updatedAt)}` : '')}
 <table class="strip"><tr>
-  <td><a class="cell" href="${compose}">✎ 输入</a></td>
+  <td><a class="cell" href="#composer">✎ 输入</a></td>
   <td><a class="cell" href="/files?s=${escapeHtml(view.sessionId)}">文件</a></td>
   <td><form method="post" action="/c/${id}/fork"><button type="submit" class="cell">分叉</button></form></td>
   <td><a class="cell" href="/c/${id}/rename">改名</a></td>
@@ -799,25 +793,11 @@ ${older}
       from: '/c/' + encodeURIComponent(view.sessionId),
     },
   )}</div>
-<script>${runTail(view.sessionId, view.cursor, view.running, Boolean(view.fresh || view.running), Boolean(view.fresh))}</script>`
-
-  return shell(view.title || '会话', body, { fontSize: config.fontSize, bodyClass: 'hei' })
-}
-
-export function renderComposer(config: KindleConfig, view: ComposerView): string {
-  const id = escapeHtml(view.sessionId)
-  const back = '/c/' + id
-  const stop = view.running ? '' : ' style="display:none"'
-  const status = view.running ? '<div class="st">生成中 · 可以继续发，回复会接在后面。</div>' : ''
-
-  const body = `
-${toolBar(`<a href="${back}">‹ 会话</a>`, `<a href="${back}">刷新</a>`)}
-${pageHead('输入', view.title || '')}
-${status}
-<div class="composer">
-  <p class="hint">公式用 $…$ 包起来，例：$sqrt(x^2+y^2)$、$int_0^1 f(x) dx$。</p>
+<div class="composer" id="composer">
+  <div class="sect">输入</div>
+  <p class="hint">公式用 $…$ 包起来，用 AsciiMath 语法（例：$sqrt(x^2+y^2)$、$int_0^1 f(x) dx$）。</p>
   <form method="post" action="/c/${id}/send">
-    <textarea id="msg" name="msg" rows="7">${escapeHtml(view.draft || '')}</textarea>
+    <textarea id="msg" name="msg" rows="6">${escapeHtml(view.draft || '')}</textarea>
     <div class="stack">
       <button type="submit" class="btn primary">发送</button>
       <button type="button" class="btn" onclick="return doPreview()">预览公式</button>
@@ -829,11 +809,10 @@ ${status}
   <form id="preview-form" method="post" action="/c/${id}/preview" style="display:none">
     <input type="hidden" name="msg" id="preview-msg">
   </form>
-  <form method="post" action="/c/${id}/stop"${stop}><button type="submit" class="btn">停止生成</button></form>
 </div>
-<script>${composerScript('')}</script>`
+<script>${composerScript(runTail(view.sessionId, view.cursor, view.running, Boolean(view.fresh || view.running), Boolean(view.fresh)))}</script>`
 
-  return shell('输入', body, { fontSize: config.fontSize, bodyClass: 'hei' })
+  return shell(view.title || '会话', body, { fontSize: config.fontSize, bodyClass: 'hei' })
 }
 
 function runTail(
