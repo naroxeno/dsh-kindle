@@ -384,6 +384,16 @@ const saved = await req('/settings', {
 const savedPage = (await req('/settings?ok=saved', { headers: { cookie } })).text
 console.log('34 save settings ->', saved.status, saved.headers.get('location'), 'notice', savedPage.includes('默认工作区已保存'))
 
+const form = { cookie, 'content-type': 'application/x-www-form-urlencoded' }
+const indentOn = await req('/settings', { method: 'POST', headers: form, body: 'action=indent&value=on' })
+const indented = (await req('/c/' + forkId, { headers: { cookie } })).text
+const indentOff = await req('/settings', { method: 'POST', headers: form, body: 'action=indent&value=off' })
+const plain = (await req('/c/' + forkId, { headers: { cookie } })).text
+console.log('34b indent toggle ->', indentOn.status, indentOn.headers.get('location'), 'on', indented.includes('class="hei ind"'),
+  'rule', indented.includes('body.ind .msg .body p'),
+  'switch', (await req('/settings', { headers: { cookie } })).text.includes('段首缩进 2em'),
+  'off', indentOff.status === 303 && !plain.includes('class="hei ind"'))
+
 const stray = mkSession('stray-1')
 store.set('stray-1', stray)
 const adopted = await req('/settings', {

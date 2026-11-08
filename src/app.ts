@@ -39,6 +39,9 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
   // dsh restart, so the file survives hot generations.
   const settingsFile = join(config.cwd, '.kindle-settings.json')
   const settings = await loadSettings(settingsFile)
+  // The indent is a Kindle UI preference; hang it on the config every renderer
+  // already receives so no page can disagree with another.
+  config.indent = Boolean(settings.indent)
   const activeCwd = (): string => settings.workspace || config.cwd
 
   async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -116,6 +119,25 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
       if (String(body.get('action') || '') === 'filter') {
         const wanted = searchQuery(body.get('q'))
         redirect(res, wanted ? '/settings?q=' + encodeURIComponent(wanted) : '/settings')
+        return
+      }
+      if (String(body.get('action') || '') === 'indent') {
+        settings.indent = String(body.get('value') || '') === 'on'
+        config.indent = settings.indent
+        try {
+          await saveSettings(settingsFile, settings)
+        } catch (error) {
+          sendHtml(
+            res,
+            200,
+            ui.renderSettings(
+              config,
+              await settingsView({ text: '存不了设置：' + errorText(error), error: true }),
+            ),
+          )
+          return
+        }
+        redirect(res, '/settings?ok=indent')
         return
       }
       if (String(body.get('action') || '') === 'adopt') {
@@ -705,6 +727,7 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
         current: entry.path === path,
       })),
       ungrouped: sessions.filter((item) => !member.has(item.sessionId)).length,
+      indent: Boolean(settings.indent),
       notice,
       settingsFile,
     }
@@ -717,6 +740,9 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
       return {
         text: count ? '默认工作区已保存，' + count + ' 个旧会话也归了组。' : '默认工作区已保存。',
       }
+    }
+    if (ok === 'indent') {
+      return { text: config.indent ? '正文改为段首缩进 2em。' : '正文改回不缩进。' }
     }
     if (ok === 'adopted') {
       const count = Math.max(0, Number(url.searchParams.get('n')) || 0)
@@ -887,13 +913,20 @@ function errorText(error: unknown): string {
 
 interface StoredSettings {
   workspace: string
+  indent?: boolean
 }
 
 async function loadSettings(file: string): Promise<StoredSettings> {
   try {
-    const value = JSON.parse(await readFile(file, 'utf8')) as { workspace?: unknown } | null
+    const value = JSON.parse(await readFile(file, 'utf8')) as {
+      workspace?: unknown
+      indent?: unknown
+    } | null
     const text = value && typeof value.workspace === 'string' ? expandHome(value.workspace) : ''
-    return { workspace: text && isAbsolute(text) ? text : '' }
+    return {
+      workspace: text && isAbsolute(text) ? text : '',
+      indent: Boolean(value && value.indent === true),
+    }
   } catch (error) {
     return { workspace: '' }
   }

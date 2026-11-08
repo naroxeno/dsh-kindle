@@ -8,6 +8,8 @@ export interface KindleConfig {
   cwd: string
   fontSize: number
   pageSize: number
+  /** Opt-in 2em first-line indent for prose. Seeded from the settings file. */
+  indent?: boolean
   hotReload: boolean
 }
 

@@ -24,6 +24,8 @@ interface ListItem {
 interface ShellOptions {
   fontSize?: number
   bodyClass?: string
+  /** Opt-in 2em first-line indent for prose paragraphs. */
+  indent?: boolean
 }
 
 export interface ListExtras {
@@ -240,6 +242,8 @@ input[type=text],input[type=password]{display:block;width:100%;height:104px;padd
 .msg .body > *:first-child{margin-top:0}
 .msg .body > *:last-child{margin-bottom:0}
 .msg .body p{margin:16px 0}
+/* Chinese reading habit: a two-character first-line indent, opt-in. */
+body.ind .msg .body p{text-indent:2em}
 .msg .body h2,.msg .body h3,.msg .body h4{font-size:1.04em;line-height:1.4;margin:28px 0 12px}
 .msg .body ul,.msg .body ol{margin:16px 0;padding-left:40px}
 .msg .body li{margin:8px 0}
@@ -288,7 +292,8 @@ figure.fig figcaption{margin-top:10px;font-size:0.74em;color:#444}
 
 function shell(title: string, body: string, opts: ShellOptions = {}): string {
   const fontSize = opts.fontSize || 30
-  const bodyClass = opts.bodyClass ? ` class="${opts.bodyClass}"` : ''
+  const classes = [opts.bodyClass || '', opts.indent ? 'ind' : ''].filter(Boolean).join(' ')
+  const bodyClass = classes ? ` class="${classes}"` : ''
   return `<!DOCTYPE html>
 <html lang="zh-CN"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -369,7 +374,7 @@ ${failed ? '<div class="alert">令牌不对，再试一次。</div>' : ''}
 </form>
 <p class="hint">省事的做法：在电脑上打开日志里打印的登录链接（带 ?t=…），把它抄成 Kindle 的地址打开一次，之后就不用再输令牌了。</p>
 </div>`
-  return shell('登录', body, { fontSize: config.fontSize })
+  return shell('登录', body, { fontSize: config.fontSize, indent: config.indent })
 }
 
 export function renderError(config: KindleConfig, status: number, message: string): string {
@@ -381,7 +386,7 @@ ${pageHead('出错了')}
 <p class="hint">${escapeHtml(message)}</p>
 <div class="stack"><a class="btn" href="/s">返回会话列表</a></div>
 </div>`
-  return shell('出错了', body, { fontSize: config.fontSize })
+  return shell('出错了', body, { fontSize: config.fontSize, indent: config.indent })
 }
 
 export function renderList(
@@ -434,7 +439,7 @@ ${notice ? `<div class="alert">${escapeHtml(notice)}</div>` : ''}
 <div class="sb"><form method="post" action="/s"><table class="sbar"><tr><td class="f"><input type="text" name="q" value="${escapeHtml(query)}" placeholder="搜索标题" autocomplete="off"></td><td class="b"><button type="submit" class="sgo">搜索</button></td></tr></table></form>${hits}<a class="newbtn" href="/new">＋ 新会话</a></div>
 </div>
 <div id="scroll">${rows}</div>`
-  return shell('DSH Kindle', body, { fontSize: config.fontSize })
+  return shell('DSH Kindle', body, { fontSize: config.fontSize, indent: config.indent })
 }
 
 export function renderRename(config: KindleConfig, view: RenameView): string {
@@ -453,7 +458,7 @@ ${pageHead('改名')}
   </div>
 </form>
 </div>`
-  return shell('改名', body, { fontSize: config.fontSize })
+  return shell('改名', body, { fontSize: config.fontSize, indent: config.indent })
 }
 
 export interface NewSessionOption {
@@ -494,7 +499,7 @@ ${pageHead('新会话', view.options.length > 1 ? '选一个模式' : '')}
 ${hint}
 ${cells}
 </div>`
-  return shell('新会话', body, { fontSize: config.fontSize })
+  return shell('新会话', body, { fontSize: config.fontSize, indent: config.indent })
 }
 
 export function renderDelete(config: KindleConfig, view: DeleteView): string {
@@ -513,7 +518,7 @@ ${pageHead('删除这个会话？')}
     </div>
   </form>
 </div>`
-  return shell('删除会话', body, { fontSize: config.fontSize })
+  return shell('删除会话', body, { fontSize: config.fontSize, indent: config.indent })
 }
 
 const EFFORT_LABELS: Record<string, string> = {
@@ -587,7 +592,7 @@ export function renderAccount(config: KindleConfig, view: AccountPageView): stri
     ? `<a class="row" href="${escapeHtml(links.topUpUrl)}"><table><tr><td class="t"><div class="ttl">去充值</div></td><td class="g">›</td></tr></table></a>`
     : ''
   out.push(usage, topUp)
-  return shell('账户', out.join(''), { fontSize: config.fontSize })
+  return shell('账户', out.join(''), { fontSize: config.fontSize, indent: config.indent })
 }
 
 export interface SettingsNotice {
@@ -610,6 +615,7 @@ export interface SettingsView {
   choices: SettingsChoice[]
   query?: string
   ungrouped: number
+  indent?: boolean
   notice?: SettingsNotice
   settingsFile?: string
 }
@@ -659,6 +665,18 @@ export function renderSettings(config: KindleConfig, view: SettingsView): string
     ? `<p class="hint">设置存在 ${escapeHtml(view.settingsFile)}</p>`
     : ''
 
+  // Reading preferences live on this page too: one tap toggles the 2em
+  // first-line indent that Chinese prose expects, and Markdown bodies follow.
+  const indent = `<div class="sect">排版</div>
+<form method="post" action="/settings">
+<input type="hidden" name="action" value="indent">
+<table class="seg"><tr>
+<td><button type="submit" name="value" value="off" class="mini${view.indent ? '' : ' on'}"${view.indent ? '' : ' disabled'}>不缩进</button></td>
+<td><button type="submit" name="value" value="on" class="mini${view.indent ? ' on' : ''}"${view.indent ? ' disabled' : ''}>段首缩进 2em</button></td>
+</tr></table>
+</form>
+<p class="hint">只作用于正文段落；标题、列表、代码、表格不受影响。</p>`
+
   const body = `
 ${toolBar('<a href="/s">‹ 会话</a>', '<a href="/settings">刷新</a>')}
 ${pageHead('设置', '默认工作区')}
@@ -668,6 +686,7 @@ ${notice}
 <p class="value">${escapeHtml(view.title)}</p>
 <p class="hint">${escapeHtml(view.path)}${view.registered ? ' · 已注册' : ' · 还没注册'}</p>
 ${registry}
+${indent}
 <div class="sect">换成已有工作区</div>
 ${search}
 ${choices}
@@ -683,7 +702,7 @@ ${choices}
 ${adopt}
 ${file}
 </div>`
-  return shell('设置', body, { fontSize: config.fontSize })
+  return shell('设置', body, { fontSize: config.fontSize, indent: config.indent })
 }
 
 export function renderMessages(
@@ -757,7 +776,7 @@ export function renderTools(config: KindleConfig, view: ToolsView): string {
 ${toolBar(`<a href="/c/${id}">‹ 会话</a>`, `<a href="/c/${id}/tools">刷新</a>`)}
 ${pageHead('工具调用', sub)}
 <div class="msg tools">${rows || '<p class="hint">这段会话还没有工具调用。</p>'}</div>`
-  return shell('工具调用', page, { fontSize: config.fontSize })
+  return shell('工具调用', page, { fontSize: config.fontSize, indent: config.indent })
 }
 
 export function renderSession(config: KindleConfig, view: SessionView): string {
@@ -811,7 +830,11 @@ ${older}
 </div>
 <script>${composerScript(runTail(view.sessionId, view.cursor, view.running, Boolean(view.fresh || view.running), Boolean(view.fresh)))}</script>`
 
-  return shell(view.title || '会话', body, { fontSize: config.fontSize, bodyClass: 'hei' })
+  return shell(view.title || '会话', body, {
+    fontSize: config.fontSize,
+    bodyClass: 'hei',
+    indent: config.indent,
+  })
 }
 
 function runTail(
@@ -917,7 +940,7 @@ export function renderFiles(config: KindleConfig, view: FilesView): string {
 ${toolBar(back, `<a href="${escapeHtml(self)}">刷新</a>`)}
 ${pageHead('Markdown 文件', sub)}
 ${rows || '<div class="empty"><p class="t">这个目录还没有 Markdown 文件</p><p class="hint">让 DSH 把交付物写进当前工作区，再回来刷新。</p></div>'}`
-  return shell('Markdown 文件', body, { fontSize: config.fontSize })
+  return shell('Markdown 文件', body, { fontSize: config.fontSize, indent: config.indent })
 }
 
 export function renderFile(config: KindleConfig, view: FileView): string {
@@ -938,7 +961,11 @@ ${toolBar(`<a href="${escapeHtml(back)}">‹ 返回</a>`, `<a href="${escapeHtml
 ${pageHead(view.name, sub)}
 <div class="msg a"><div class="body">${html}</div></div>
 `
-  return shell(view.name, body, { fontSize: config.fontSize, bodyClass: 'hei' })
+  return shell(view.name, body, {
+    fontSize: config.fontSize,
+    bodyClass: 'hei',
+    indent: config.indent,
+  })
 }
 
 export function renderPreview(config: KindleConfig, view: PreviewView): string {
@@ -972,7 +999,7 @@ ${pageHead('预览')}
 
 <script>${composerScript('')}</script>`
 
-  return shell('预览', body, { fontSize: config.fontSize })
+  return shell('预览', body, { fontSize: config.fontSize, indent: config.indent })
 }
 
 function formatSize(bytes: number): string {
