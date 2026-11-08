@@ -94,7 +94,9 @@ kindle UI listening on http://192.168.1.10:8090/s (workspace /home/you/kindle-ws
 kindle login link (open once on the device): http://192.168.1.10:8090/login?t=<token>
 ```
 
-自动生成的 token 是 32 字符随机串，存在 `<cwd>/.kindle-token`（权限 600）。想换：直接覆盖这个文件，下一次请求生效，不用重启；旧 cookie 会立即失效。
+自动生成的 token 是 32 字符随机串，存在 `<cwd>/.kindle-token`（权限 600）。想换：
+`node scripts/set-token.mjs ~/kindle-ws [新token]`——脚本会写文件并 touch `lib/app.js`，
+让下一次请求重载并启用新 token，旧 cookie 随即失效。只手工改文件不会触发重载。
 
 ### 文件密码
 

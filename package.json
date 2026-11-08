@@ -90,6 +90,7 @@
     "prompt/",
     "docs/",
     "scripts/set-files-pin.mjs",
+    "scripts/set-token.mjs",
     "cordis.patch.yml",
     "README.md",
     "LICENSE",
