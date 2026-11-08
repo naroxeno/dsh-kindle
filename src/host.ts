@@ -198,9 +198,7 @@ export interface SessionControllerLike {
     query: Record<string, never>,
     signal?: AbortSignal,
   ): Promise<SessionListResult | null | undefined>
-  create(
-    options: SessionCreateOptions,
-  ): Promise<{ sessionId?: string } | null | undefined>
+  create(options: SessionCreateOptions): Promise<{ sessionId?: string } | null | undefined>
   prompt(request: PromptRequest, signal?: AbortSignal): Promise<unknown>
   rename(input: { sessionId: string; title: string }): Promise<unknown>
   fork(input: { sessionId: string }): Promise<{ sessionId?: string } | null | undefined>

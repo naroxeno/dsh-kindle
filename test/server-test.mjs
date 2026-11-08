@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync } from 'node:fs'
+import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -404,5 +404,38 @@ const priceOk = windows.every(([iso, peak]) => priceWindow(new Date(iso)).peak =
 const tagPage = (await req('/s', { headers: { cookie } })).text
 console.log('36 price windows ->', priceOk, 'tag shown', tagPage.includes('谷时') || tagPage.includes('峰时'),
   'debug', (await req('/debug', { headers: { cookie } })).text.includes('price: '))
+
+// --- markdown preview ---
+const reportPath = join(cwd, '交付报告.md')
+writeFileSync(reportPath, '# 报告标题\n\n正文见 [附录](附录.md)。\n\n```\ncode\n```\n')
+const appendixPath = join(cwd, '附录.md')
+writeFileSync(appendixPath, '# 附录\n')
+const textPath = join(cwd, '笔记.txt')
+writeFileSync(textPath, 'not markdown')
+
+const filesPage = await req('/files?s=' + forkId, { headers: { cookie } })
+checkHtmlHeaders('files page', filesPage)
+console.log('37 file list ->', filesPage.status, 'listed', filesPage.text.includes('交付报告.md'),
+  'md only', !filesPage.text.includes('笔记.txt'), 'back', filesPage.text.includes('‹ 会话'))
+
+const docPage = await req('/f?p=' + encodeURIComponent(reportPath) + '&from=' + encodeURIComponent('/c/' + forkId), { headers: { cookie } })
+checkHtmlHeaders('file page', docPage)
+const appendixHref = '/f?p=' + encodeURIComponent(appendixPath)
+console.log('38 file preview ->', docPage.status, 'heading', docPage.text.includes('<h2>报告标题</h2>'),
+  'inner link', docPage.text.includes(appendixHref), 'back', docPage.text.includes('href="/c/' + forkId + '"'))
+
+append(store.get(forkId), 'assistant/message', {
+  message: { role: 'assistant', content: [{ type: 'text', text: '写好了，见 ' + reportPath + ' 和 `附录.md`。' }] },
+  interrupted: false,
+}, 'append')
+const sessionRef = (await req('/c/' + forkId, { headers: { cookie } })).text
+console.log('39 path autolink ->', sessionRef.includes(encodeURIComponent(reportPath)),
+  'inline code link', sessionRef.includes('/f?p=' + encodeURIComponent(reportPath)))
+
+const denied = await req('/f?p=' + encodeURIComponent('/etc/hosts'), { headers: { cookie } })
+const notMarkdown = await req('/f?p=' + encodeURIComponent(textPath), { headers: { cookie } })
+const missing = await req('/f?p=' + encodeURIComponent(join(cwd, '没有这个.md')), { headers: { cookie } })
+console.log('40 preview guards ->', 'outside', denied.status === 403, 'not md', notMarkdown.status === 400,
+  'missing', missing.status === 404)
 
 for (const d of disposers) d()

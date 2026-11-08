@@ -60,6 +60,8 @@ export interface UiModelChoice {
 export interface SessionView {
   sessionId: string
   title?: string
+  /** Working directory used to resolve relative Markdown links in messages. */
+  cwd?: string
   messages: UiMessage[]
   running?: boolean
   hasOlder?: boolean
@@ -71,6 +73,31 @@ export interface SessionView {
   fresh?: boolean
   updatedAt?: number
   version?: string
+}
+
+export interface FileRow {
+  path: string
+  name: string
+  relative: string
+  size: number
+  updatedAt: number
+}
+
+export interface FilesView {
+  sessionId?: string
+  workspace: string
+  entries: FileRow[]
+  truncated?: boolean
+}
+
+export interface FileView {
+  path: string
+  name: string
+  dir: string
+  size: number
+  updatedAt?: number
+  source: string
+  from?: string
 }
 
 export interface ToolsView {
@@ -230,6 +257,7 @@ input[type=text],input[type=password]{display:block;width:100%;height:104px;padd
 .msg .body blockquote{margin:20px 0;padding-left:18px;border-left:8px solid #ddd;color:#333}
 .msg .body table{border-collapse:collapse;margin:20px 0;font-size:0.84em;max-width:100%}
 .msg .body td,.msg .body th{border:2px solid #999;padding:8px 10px;vertical-align:top;word-wrap:break-word}
+.msg .body th{background:#eee;text-align:left;white-space:nowrap}
 .msg .body pre.code{font-family:monospace;font-size:0.74em;line-height:1.55;background:#f5f5f5;border:2px solid #ccc;padding:14px;white-space:pre-wrap;word-wrap:break-word;margin:20px 0}
 .msg .body code{font-family:monospace;font-size:0.9em;background:#eee;padding:1px 5px}
 .msg .body a{text-decoration:underline}
@@ -455,9 +483,7 @@ export function renderList(
       : '<span class="dbtn off">下一页 ›</span>'
   const dock = `<div id="dock" class="dock"><table class="d3"><tr><td class="prev">${prev}</td><td class="mid"><a class="dbtn primary" href="/new" aria-label="新会话">＋</a></td><td class="next">${next}</td></tr></table></div>`
 
-  const hits = query
-    ? `<p class="hits">找到 ${total} 个 · <a href="/s">清除搜索</a></p>`
-    : ''
+  const hits = query ? `<p class="hits">找到 ${total} 个 · <a href="/s">清除搜索</a></p>` : ''
 
   const body = `
 <div id="head">
@@ -705,6 +731,7 @@ export function renderMessages(
   config: KindleConfig,
   messages: UiMessage[],
   toolsHref?: string,
+  link: { cwd?: string; from?: string } = {},
 ): string {
   const fontPx = config.fontSize
   const parts: string[] = []
@@ -741,12 +768,12 @@ export function renderMessages(
     flushTools()
     if (message.kind === 'user') {
       parts.push(
-        `<div class="msg u"><div class="who">你</div><div class="body">${inline(message.text, fontPx)}</div></div>`,
+        `<div class="msg u"><div class="who">你</div><div class="body">${inline(message.text, fontPx, link)}</div></div>`,
       )
     } else if (message.kind === 'assistant') {
       const tail = message.interrupted ? '<p class="hint">（已中断）</p>' : ''
       parts.push(
-        `<div class="msg a"><div class="who">DSH</div><div class="body">${renderMarkdown(message.text, { fontPx })}${tail}</div></div>`,
+        `<div class="msg a"><div class="who">DSH</div><div class="body">${renderMarkdown(message.text, { fontPx, ...link })}${tail}</div></div>`,
       )
     }
   }
@@ -787,13 +814,22 @@ ${pageHead(view.title || '会话', formatTime(view.updatedAt) ? `更新于 ${for
 ${modelBar(view)}
 <table class="strip"><tr>
   <td><form method="post" action="/c/${id}/fork"><button type="submit" class="cell">分叉</button></form></td>
+  <td><a class="cell" href="/files?s=${escapeHtml(view.sessionId)}">文件</a></td>
   <td><a class="cell" href="/c/${id}/rename">改名</a></td>
   <td><a class="cell" href="/c/${id}/delete">删除</a></td>
   <td><a class="cell" href="#composer">✎ 输入</a></td>
 </tr></table>
 <div class="st" id="state"${view.running ? '' : ' style="display:none"'}>${view.running ? '正在生成……（新内容会自动追加）' : ''}</div>
 ${older}
-<div id="msgs">${renderMessages(config, view.messages, view.hasTools ? `/c/${id}/tools` : undefined)}</div>
+<div id="msgs">${renderMessages(
+    config,
+    view.messages,
+    view.hasTools ? `/c/${id}/tools` : undefined,
+    {
+      cwd: view.cwd,
+      from: '/c/' + encodeURIComponent(view.sessionId),
+    },
+  )}</div>
 <div class="composer" id="composer">
   <div class="sect">输入</div>
   <p class="hint">公式用 $…$ 包起来，用 AsciiMath 语法（例：$sqrt(x^2+y^2)$、$int_0^1 f(x) dx$）。</p>
@@ -881,6 +917,52 @@ function runTail(
 })();`
 }
 
+export function renderFiles(config: KindleConfig, view: FilesView): string {
+  const query = view.sessionId ? '?s=' + encodeURIComponent(view.sessionId) : ''
+  const back = view.sessionId
+    ? `<a href="/c/${encodeURIComponent(view.sessionId)}">‹ 会话</a>`
+    : `<a href="/s">‹ 列表</a>`
+  const self = '/files' + query
+  const rows = view.entries
+    .map((entry) => {
+      const href = '/f?p=' + encodeURIComponent(entry.path) + '&from=' + encodeURIComponent(self)
+      return `<a class="row" href="${escapeHtml(href)}"><table><tr><td class="t"><div class="ttl">${escapeHtml(entry.name)}</div><p class="meta"><span class="n">${escapeHtml(entry.relative)}</span>${formatSize(entry.size)} · ${formatTime(entry.updatedAt)}</p></td><td class="g">›</td></tr></table></a>`
+    })
+    .join('\n')
+  const sub =
+    view.workspace +
+    ' · ' +
+    view.entries.length +
+    ' 个文件' +
+    (view.truncated ? ' · 只列最近 60 个' : '')
+  const body = `
+${toolBar(back, `<a href="${escapeHtml(self)}">刷新</a>`)}
+${pageHead('Markdown 文件', sub)}
+${rows || '<div class="empty"><p class="t">这个目录还没有 Markdown 文件</p><p class="hint">让 DSH 把交付物写进当前工作区，再回来刷新。</p></div>'}`
+  return shell('Markdown 文件', body, { fontSize: config.fontSize })
+}
+
+export function renderFile(config: KindleConfig, view: FileView): string {
+  const fontPx = config.fontSize
+  const back = view.from || '/files'
+  const self =
+    '/f?p=' +
+    encodeURIComponent(view.path) +
+    (view.from ? '&from=' + encodeURIComponent(view.from) : '')
+  const html = renderMarkdown(view.source, { fontPx, cwd: view.dir, from: view.from })
+  const sub =
+    view.dir +
+    ' · ' +
+    formatSize(view.size) +
+    (view.updatedAt ? ' · ' + formatTime(view.updatedAt) : '')
+  const body = `
+${toolBar(`<a href="${escapeHtml(back)}">‹ 返回</a>`, `<a href="${escapeHtml(self)}">刷新</a>`)}
+${pageHead(view.name, sub)}
+<div class="msg a"><div class="body">${html}</div></div>
+<a class="older" href="#">↑ 回到顶部</a>`
+  return shell(view.name, body, { fontSize: config.fontSize, bodyClass: 'hei' })
+}
+
 export function renderPreview(config: KindleConfig, view: PreviewView): string {
   const fontPx = config.fontSize
   const converted = convertPromptMath(String(view.draft || ''))
@@ -913,6 +995,13 @@ ${pageHead('预览')}
 <script>${composerScript('')}</script>`
 
   return shell('预览', body, { fontSize: config.fontSize })
+}
+
+function formatSize(bytes: number): string {
+  const size = Number(bytes) || 0
+  if (size < 1024) return size + ' B'
+  if (size < 1024 * 1024) return (size / 1024).toFixed(1) + ' KB'
+  return (size / (1024 * 1024)).toFixed(1) + ' MB'
 }
 
 function formatTime(ms?: number): string {

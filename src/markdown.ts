@@ -1,11 +1,16 @@
 import { readFileSync, statSync } from 'node:fs'
-import { extname, resolve } from 'node:path'
+import { homedir } from 'node:os'
+import { extname, isAbsolute, resolve } from 'node:path'
 
 const STAMP = new URL(import.meta.url).search
 const { escapeHtml, texToSvg } = await import('./math.js' + STAMP)
 
 export interface MarkdownOptions {
   fontPx?: number
+  /** Base directory for relative links and images; set to the file's own dir when previewing one. */
+  cwd?: string
+  /** Page to return to from a file preview, carried through generated links. */
+  from?: string
 }
 
 interface Piece {
@@ -58,7 +63,7 @@ export function renderMarkdown(src: string, opts: MarkdownOptions = {}): string 
     const heading = /^\s{0,3}(#{1,6})\s+(.*?)\s*#*\s*$/.exec(line)
     if (heading) {
       const level = Math.min(heading[1].length + 1, 6)
-      blocks.push(`<h${level}>${inline(heading[2], fontPx)}</h${level}>`)
+      blocks.push(`<h${level}>${inline(heading[2], fontPx, opts)}</h${level}>`)
       i += 1
       continue
     }
@@ -80,13 +85,14 @@ export function renderMarkdown(src: string, opts: MarkdownOptions = {}): string 
     }
 
     if (isTableStart(lines, i)) {
+      const head = splitRow(lines[i])
       const rows: string[][] = []
       i += 2
       while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) {
         rows.push(splitRow(lines[i]))
         i += 1
       }
-      blocks.push(renderTable(rows, fontPx))
+      blocks.push(renderTable(head, rows, fontPx, opts))
       continue
     }
 
@@ -106,7 +112,7 @@ export function renderMarkdown(src: string, opts: MarkdownOptions = {}): string 
           item += ' ' + lines[i].trim()
           i += 1
         }
-        items.push(`<li>${inline(item, fontPx)}</li>`)
+        items.push(`<li>${inline(item, fontPx, opts)}</li>`)
       }
       blocks.push(`<ul>${items.join('')}</ul>`)
       continue
@@ -118,7 +124,7 @@ export function renderMarkdown(src: string, opts: MarkdownOptions = {}): string 
       while (i < lines.length) {
         const m = /^\s{0,3}\d+[.)]\s+(.*)$/.exec(lines[i])
         if (!m) break
-        items.push(`<li>${inline(m[1], fontPx)}</li>`)
+        items.push(`<li>${inline(m[1], fontPx, opts)}</li>`)
         i += 1
       }
       blocks.push(`<ol>${items.join('')}</ol>`)
@@ -127,7 +133,7 @@ export function renderMarkdown(src: string, opts: MarkdownOptions = {}): string 
 
     const lone = /^\s{0,3}!\[([^\]\n]{0,200})\]\(([^)\s]{1,2000})\)\s*$/.exec(line)
     if (lone) {
-      blocks.push(imageHtml(lone[2], lone[1]))
+      blocks.push(imageHtml(lone[2], lone[1], opts.cwd))
       i += 1
       continue
     }
@@ -141,7 +147,7 @@ export function renderMarkdown(src: string, opts: MarkdownOptions = {}): string 
       para.push(lines[i])
       i += 1
     }
-    blocks.push(`<p>${inline(para.join('\n'), fontPx)}</p>`)
+    blocks.push(`<p>${inline(para.join('\n'), fontPx, opts)}</p>`)
   }
 
   return blocks.join('\n')
@@ -175,19 +181,30 @@ function splitRow(line: string): string[] {
     .map((cell) => cell.trim())
 }
 
-function renderTable(rows: string[][], fontPx: number): string {
-  if (rows.length === 0) return ''
+function renderTable(
+  head: string[],
+  rows: string[][],
+  fontPx: number,
+  opts: MarkdownOptions,
+): string {
+  if (head.length === 0 && rows.length === 0) return ''
+  const headHtml = head.length
+    ? `<tr>${head.map((c) => `<th>${inline(c, fontPx, opts)}</th>`).join('')}</tr>`
+    : ''
   const body = rows
-    .map((cells) => '<tr>' + cells.map((c) => `<td>${inline(c, fontPx)}</td>`).join('') + '</tr>')
+    .map(
+      (cells) =>
+        '<tr>' + cells.map((c) => `<td>${inline(c, fontPx, opts)}</td>`).join('') + '</tr>',
+    )
     .join('')
-  return `<table>${body}</table>`
+  return `<table>${headHtml}${body}</table>`
 }
 
 function displayMath(tex: string, fontPx: number): string {
   return `<div class="mathblock">${texToSvg(tex, { display: true, fontPx })}</div>`
 }
 
-export function inline(text: string, fontPx = 30): string {
+export function inline(text: string, fontPx = 30, opts: MarkdownOptions = {}): string {
   const pieces: Piece[] = []
   let i = 0
   let buffer = ''
@@ -203,11 +220,33 @@ export function inline(text: string, fontPx = 30): string {
     const ch = text[i]
 
     if (ch === '`') {
-      const close = text.indexOf('`', i + 1)
-      if (close !== -1 && close > i + 1) {
+      let run = 0
+      while (text[i + run] === '`') run += 1
+      const fence = text.slice(i, i + run)
+      let close = -1
+      let at = text.indexOf(fence, i + run)
+      while (at !== -1) {
+        let len = 0
+        while (text[at + len] === '`') len += 1
+        if (len === run) {
+          close = at
+          break
+        }
+        at = text.indexOf(fence, at + len)
+      }
+      if (close !== -1 && close > i + run) {
         flushText()
-        pieces.push({ kind: 'code', value: text.slice(i + 1, close) })
-        i = close + 1
+        let value = text.slice(i + run, close)
+        if (
+          value.length > 2 &&
+          value[0] === ' ' &&
+          value[value.length - 1] === ' ' &&
+          value.trim()
+        ) {
+          value = value.slice(1, -1)
+        }
+        pieces.push({ kind: 'code', value })
+        i = close + run
         continue
       }
     }
@@ -253,13 +292,13 @@ export function inline(text: string, fontPx = 30): string {
 
   return pieces
     .map((piece) => {
-      if (piece.kind === 'image') return imageHtml(piece.value, piece.alt || '')
-      if (piece.kind === 'code') return `<code>${escapeHtml(piece.value)}</code>`
+      if (piece.kind === 'image') return imageHtml(piece.value, piece.alt || '', opts.cwd)
+      if (piece.kind === 'code') return codeHtml(piece.value, opts)
       if (piece.kind === 'math') {
         const svg = texToSvg(piece.value, { display: piece.display, fontPx })
         return piece.display ? `<span class="mathblock-inline">${svg}</span>` : svg
       }
-      return emphasis(escapeHtml(piece.value))
+      return emphasis(escapeHtml(piece.value), opts)
     })
     .join('')
 }
@@ -273,11 +312,27 @@ function findDelimiter(text: string, from: number, delim: string): number {
   return -1
 }
 
-function emphasis(escaped: string): string {
+function codeHtml(value: string, opts: MarkdownOptions): string {
+  const file = resolveMarkdownPath(value, opts.cwd)
+  const code = `<code>${escapeHtml(value)}</code>`
+  return file ? `<a href="${escapeAttribute(fileHref(file, opts))}">${code}</a>` : code
+}
+
+function emphasis(escaped: string, opts: MarkdownOptions): string {
   let out = escaped
   out = out.replace(/\[([^\]]{1,200})\]\(([^)\s]{1,500})\)/g, (m, label, href) => {
-    return `<a href="${escapeAttribute(href)}">${label}</a>`
+    const file = resolveMarkdownPath(href, opts.cwd)
+    return `<a href="${escapeAttribute(file ? fileHref(file, opts) : href)}">${label}</a>`
   })
+  out = out.replace(
+    /(^|[\s(（【「『"'、，。：；:])([^\s<>"'()?，。；、！？」』]{1,300}\.(?:md|markdown))(?=$|[\s)）】」』"'、，。：；:])/gi,
+    (match, lead: string, token: string) => {
+      if (token.indexOf('://') !== -1 || token.startsWith('//')) return match
+      const file = resolveMarkdownPath(token, opts.cwd)
+      if (!file) return match
+      return lead + `<a href="${escapeAttribute(fileHref(file, opts))}">${token}</a>`
+    },
+  )
   out = out.replace(/(^|[\s(])((?:https?|mailto):[^\s<>()]{4,300})/g, (m, lead, url) => {
     return `${lead}<a href="${escapeAttribute(url)}">${url}</a>`
   })
@@ -291,12 +346,47 @@ function escapeAttribute(value: string): string {
   return escapeHtml(value).replace(/'/g, '&#39;')
 }
 
+const MARKDOWN_EXT = /\.(?:md|markdown)$/i
+const FILE_CACHE = new Map<string, { ok: boolean; at: number }>()
+
+function isMarkdownFile(path: string): boolean {
+  const now = Date.now()
+  const cached = FILE_CACHE.get(path)
+  if (cached && now - cached.at < 10_000) return cached.ok
+  let ok = false
+  try {
+    ok = statSync(path).isFile()
+  } catch {
+    ok = false
+  }
+  FILE_CACHE.set(path, { ok, at: now })
+  if (FILE_CACHE.size > 128) FILE_CACHE.clear()
+  return ok
+}
+
+/** A link target that names an existing local Markdown file, resolved against `cwd`. */
+export function resolveMarkdownPath(raw: string, cwd?: string): string | null {
+  let href = String(raw || '').trim()
+  if (href.startsWith('<') && href.endsWith('>')) href = href.slice(1, -1).trim()
+  if (!href || href.length > 400) return null
+  if (/^(?:[a-z][a-z0-9+.-]*:|\/\/|#)/i.test(href)) return null
+  if (!MARKDOWN_EXT.test(href)) return null
+  if (href.startsWith('~')) href = homedir() + href.slice(1)
+  const path = isAbsolute(href) ? href : resolve(cwd || process.cwd(), href)
+  return isMarkdownFile(path) ? path : null
+}
+
+function fileHref(path: string, opts: MarkdownOptions): string {
+  const from = opts.from ? '&from=' + encodeURIComponent(opts.from) : ''
+  return '/f?p=' + encodeURIComponent(path) + from
+}
+
 const IMAGE_EXTS = new Set(['.svg', '.png', '.jpg', '.jpeg', '.gif', '.webp'])
 const IMAGE_CACHE = new Map<string, { key: string; html: string }>()
 const IMAGE_CACHE_LIMIT = 32
 
 /** ![alt](src) -> inline SVG (line art) or a data URI (raster), so e-ink clients need no extra route. */
-function imageHtml(src: string, alt: string): string {
+function imageHtml(src: string, alt: string, cwd?: string): string {
   const label = alt ? escapeHtml(alt).trim() : ''
   let href = src.trim()
   if (href.startsWith('<') && href.endsWith('>')) href = href.slice(1, -1).trim()
@@ -305,7 +395,7 @@ function imageHtml(src: string, alt: string): string {
   if (/^(https?:\/\/|data:)/i.test(href)) {
     return `<figure class="fig"><img src="${escapeAttribute(href)}" alt="${label}"></figure>`
   }
-  const path = resolve(process.cwd(), href)
+  const path = resolve(cwd || process.cwd(), href)
   const ext = extname(path).toLowerCase()
   if (!IMAGE_EXTS.has(ext)) return missing
   try {

@@ -1,12 +1,12 @@
 import { createReadStream, readFileSync, statSync } from 'node:fs'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { homedir } from 'node:os'
-import { basename, dirname, extname, isAbsolute, join, resolve, sep } from 'node:path'
+import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import type { Generation } from './generation.js'
 import type { KindleApp, KindleContext, KindleHost, ModelChoice } from './host.js'
 import type { Transcript, TranscriptMessage, WorkspaceEntry } from './sessions.js'
-import type { ListExtras, SettingsNotice, SettingsView } from './ui.js'
+import type { FileRow, ListExtras, SettingsNotice, SettingsView } from './ui.js'
 
 const STAMP = new URL(import.meta.url).search
 const VERSION: string = JSON.parse(
@@ -14,6 +14,8 @@ const VERSION: string = JSON.parse(
 ).version
 
 const LIST_PAGE_SIZE = 5
+const FILE_PAGE_SIZE = 60
+const MARKDOWN_MAX_BYTES = 1024 * 1024
 
 class HttpError extends Error {
   status: number
@@ -265,6 +267,50 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
       return
     }
 
+    if (method === 'GET' && path === '/files') {
+      const sessionId = String(url.searchParams.get('s') || '')
+      const root = activeCwd()
+      const rows = await listMarkdownFiles(root)
+      sendHtml(
+        res,
+        200,
+        ui.renderFiles(config, {
+          ...(sessionId ? { sessionId } : {}),
+          workspace: await workspaceLabel(),
+          entries: rows.slice(0, FILE_PAGE_SIZE),
+          truncated: rows.length > FILE_PAGE_SIZE,
+        }),
+      )
+      return
+    }
+
+    if (method === 'GET' && path === '/f') {
+      const file = resolveReadableFile(String(url.searchParams.get('p') || ''), readRoots())
+      let info
+      try {
+        info = statSync(file)
+      } catch (error) {
+        throw new HttpError(404, '文件不存在。')
+      }
+      if (!info.isFile()) throw new HttpError(404, '文件不存在。')
+      if (info.size > MARKDOWN_MAX_BYTES) throw new HttpError(413, '文件太大（上限 1 MB）。')
+      const from = safeFrom(url.searchParams.get('from'))
+      sendHtml(
+        res,
+        200,
+        ui.renderFile(config, {
+          path: file,
+          name: basename(file),
+          dir: dirname(file),
+          size: info.size,
+          updatedAt: info.mtimeMs,
+          source: await readFile(file, 'utf8'),
+          ...(from ? { from } : {}),
+        }),
+      )
+      return
+    }
+
     if (method === 'GET' && path === '/new') {
       const roster = await sessionsApi.agentPresetRoster(ctx)
       sendHtml(
@@ -329,6 +375,7 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
         ui.renderSession(config, {
           sessionId,
           title: transcript.title,
+          cwd: activeCwd(),
           messages: visible,
           running: transcript.running,
           updatedAt: transcript.updatedAt,
@@ -406,9 +453,15 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
         mode: appendable ? 'append' : 'replace',
         html: appendable
           ? pending.length
-            ? ui.renderMessages(config, pending, toolsHref)
+            ? ui.renderMessages(config, pending, toolsHref, {
+                cwd: activeCwd(),
+                from: '/c/' + encodeURIComponent(sessionId),
+              })
             : ''
-          : ui.renderMessages(config, visible, toolsHref),
+          : ui.renderMessages(config, visible, toolsHref, {
+              cwd: activeCwd(),
+              from: '/c/' + encodeURIComponent(sessionId),
+            }),
         cursor,
         running: transcript.running ? 1 : 0,
         version: transcript.updatedAt + ':' + (transcript.running ? 1 : 0),
@@ -651,9 +704,7 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
     if (ok === 'saved') {
       const count = Math.max(0, Number(url.searchParams.get('n')) || 0)
       return {
-        text: count
-          ? '默认工作区已保存，' + count + ' 个旧会话也归了组。'
-          : '默认工作区已保存。',
+        text: count ? '默认工作区已保存，' + count + ' 个旧会话也归了组。' : '默认工作区已保存。',
       }
     }
     if (ok === 'adopted') {
@@ -685,6 +736,56 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
       })
       req.on('error', rejectBody)
     })
+  }
+
+  function readRoots(): string[] {
+    return [activeCwd(), config.cwd, process.cwd()]
+  }
+
+  function resolveReadableFile(raw: string, roots: string[]): string {
+    if (!raw) throw new HttpError(404, '没有指定文件。')
+    const wanted = expandHome(raw)
+    const file = isAbsolute(wanted) ? wanted : resolve(roots[0] || process.cwd(), wanted)
+    if (!roots.some((root) => isInside(file, root))) {
+      throw new HttpError(403, '这个文件不在可读目录里。')
+    }
+    if (!/\.(?:md|markdown)$/i.test(file)) throw new HttpError(400, '现在只支持 Markdown 预览。')
+    return file
+  }
+
+  async function listMarkdownFiles(root: string): Promise<FileRow[]> {
+    const rows: FileRow[] = []
+    const walk = async (dir: string, depth: number): Promise<void> => {
+      if (depth > 3 || rows.length >= 200) return
+      let entries
+      try {
+        entries = await readdir(dir, { withFileTypes: true })
+      } catch (error) {
+        return
+      }
+      for (const entry of entries) {
+        const full = join(dir, entry.name)
+        if (entry.isDirectory()) {
+          if (entry.name.startsWith('.') || entry.name === 'node_modules') continue
+          await walk(full, depth + 1)
+          continue
+        }
+        if (!entry.isFile() || !/\.(?:md|markdown)$/i.test(entry.name)) continue
+        try {
+          const info = await stat(full)
+          rows.push({
+            path: full,
+            name: entry.name,
+            relative: relative(root, full),
+            size: info.size,
+            updatedAt: info.mtimeMs,
+          })
+        } catch (error) {}
+      }
+    }
+    await walk(root, 0)
+    rows.sort((a, b) => b.updatedAt - a.updatedAt)
+    return rows
   }
 
   function renderErrorPage(status: number, message: unknown): string {
@@ -798,6 +899,15 @@ function expandHome(path: string): string {
   if (text === '~') return homedir()
   if (text.startsWith('~/')) return join(homedir(), text.slice(2))
   return text
+}
+
+function isInside(file: string, root: string): boolean {
+  return file === root || file.startsWith(root.endsWith(sep) ? root : root + sep)
+}
+
+function safeFrom(value: unknown): string {
+  const text = String(value || '')
+  return /^\/(?!\/)/.test(text) ? text.slice(0, 400) : ''
 }
 
 function searchQuery(value: unknown): string {
