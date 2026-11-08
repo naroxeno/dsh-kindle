@@ -532,7 +532,7 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
       const known = model.efforts.some((entry) => entry.id === effort)
       if (!known) throw new HttpError(400, '这个模型不支持该思考强度。')
       await sessionsApi.setReasoningEffort(ctx, sessionId, effort)
-      redirect(res, '/c/' + encodeURIComponent(sessionId) + '#composer')
+      redirect(res, '/c/' + encodeURIComponent(sessionId) + '?fresh=1')
       return
     }
 

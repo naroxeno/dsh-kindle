@@ -345,6 +345,13 @@ function ins(s){
   ta.value=d;
   try{ta.focus();if(typeof b==='number'){ta.selectionStart=ta.selectionEnd=b+s.length;}}catch(e){}
 }
+function goComposer(){
+  var c=document.getElementById('composer');
+  if(!c)return false;
+  if(c.scrollIntoView){c.scrollIntoView();return false;}
+  window.scrollTo(0,document.documentElement.scrollHeight||document.body.scrollHeight||0);
+  return false;
+}
 function doPreview(){document.getElementById('preview-msg').value=ta.value;document.getElementById('preview-form').submit();return false;}
 ${extra}`
 }
@@ -775,7 +782,7 @@ export function renderSession(config: KindleConfig, view: SessionView): string {
 ${toolBar(`<a href="/s">‹ 列表</a>`, `<a href="/c/${id}">刷新</a>`)}
 ${pageHead(view.title || '会话', formatTime(view.updatedAt) ? `更新于 ${formatTime(view.updatedAt)}` : '')}
 <table class="strip"><tr>
-  <td><a class="cell" href="#composer">✎ 输入</a></td>
+  <td><button type="button" class="cell" onclick="return goComposer()">✎ 输入</button></td>
   <td><a class="cell" href="/files?s=${escapeHtml(view.sessionId)}">文件</a></td>
   <td><form method="post" action="/c/${id}/fork"><button type="submit" class="cell">分叉</button></form></td>
   <td><a class="cell" href="/c/${id}/rename">改名</a></td>
@@ -938,7 +945,7 @@ export function renderFile(config: KindleConfig, view: FileView): string {
 ${toolBar(`<a href="${escapeHtml(back)}">‹ 返回</a>`, `<a href="${escapeHtml(self)}">刷新</a>`)}
 ${pageHead(view.name, sub)}
 <div class="msg a"><div class="body">${html}</div></div>
-<a class="older" href="#">↑ 回到顶部</a>`
+<button type="button" class="older" onclick="window.scrollTo(0,0);return false">↑ 回到顶部</button>`
   return shell(view.name, body, { fontSize: config.fontSize, bodyClass: 'hei' })
 }
 
