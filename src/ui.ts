@@ -79,19 +79,37 @@ export interface SessionView {
   model?: UiModelChoice | null
 }
 
+export type FileKind = 'md' | 'text' | 'image' | 'other'
+
 export interface FileRow {
   path: string
   name: string
   relative: string
   size: number
-  updatedAt: number
+  updatedAt?: number
+  dir?: boolean
+  kind?: FileKind
 }
 
 export interface FilesView {
   sessionId?: string
   workspace: string
+  dir: string
+  label: string
+  parent?: string
+  crumbs: { name: string; path: string }[]
   entries: FileRow[]
   truncated?: boolean
+}
+
+export interface TextView {
+  path: string
+  name: string
+  dir: string
+  size: number
+  updatedAt?: number
+  source: string
+  from?: string
 }
 
 export interface FileView {
@@ -194,6 +212,10 @@ h1,h2,h3,h4{font-weight:bold;margin:0}
 .row .meta{margin:5px 0 0;font-size:0.78em;color:#555}
 .row .meta .n{margin-right:14px}
 .row:active{background:#eaeaea}
+.row.dim .ttl{color:#666}
+.bc{padding:16px 24px;border-bottom:2px solid #ddd;background:#f1f1f1;font-size:0.86em;color:#555;line-height:1.5}
+.bc a{text-decoration:underline}
+.plain{margin:0;white-space:pre-wrap;word-wrap:break-word;font-size:0.94em;line-height:1.55}
 .flag{display:inline-block;border:2px solid #000;background:#000;color:#fff;padding:1px 10px;font-size:1em;line-height:1.35}
 .flag.off{background:#fff;color:#000}
 
@@ -934,46 +956,78 @@ function runTail(
 }
 
 export function renderFiles(config: KindleConfig, view: FilesView): string {
-  const query = view.sessionId ? '?s=' + encodeURIComponent(view.sessionId) : ''
+  const query = view.sessionId ? '&s=' + encodeURIComponent(view.sessionId) : ''
   const back = view.sessionId
     ? `<a href="/c/${encodeURIComponent(view.sessionId)}">‹ 会话</a>`
     : `<a href="/s">‹ 列表</a>`
-  const self = '/files' + query
-  const seen: Record<string, number> = {}
-  for (const entry of view.entries) seen[entry.name] = (seen[entry.name] || 0) + 1
+  const dirHref = (path: string) => '/files?p=' + encodeURIComponent(path) + query
+  const self = dirHref(view.dir)
+  const crumbs = view.crumbs
+    .map((crumb, index) =>
+      index === view.crumbs.length - 1
+        ? '<span>' + escapeHtml(crumb.name) + '</span>'
+        : '<a href="' + escapeHtml(dirHref(crumb.path)) + '">' + escapeHtml(crumb.name) + '</a> › ',
+    )
+    .join('')
+  const up = view.parent
+    ? '<a class="row" href="' +
+      escapeHtml(dirHref(view.parent)) +
+      '"><table><tr><td class="t"><div class="ttl">‹ 上一级</div></td><td class="g"></td></tr></table></a>'
+    : ''
   const rows = view.entries
     .map((entry) => {
-      const href = '/f?p=' + encodeURIComponent(entry.path) + '&from=' + encodeURIComponent(self)
-      // Three files called README.md look identical by name alone, so a
-      // duplicate name gets its relative path as the title instead.
-      const dup = (seen[entry.name] || 0) > 1
-      const title = dup ? entry.relative : entry.name
-      const where = dup ? '' : '<span class="n">' + escapeHtml(entry.relative) + '</span>'
-      return (
-        '<a class="row" href="' +
-        escapeHtml(href) +
-        '"><table><tr><td class="t"><div class="ttl">' +
-        escapeHtml(title) +
+      const meta = entry.dir
+        ? '目录'
+        : formatSize(entry.size) + (entry.updatedAt ? ' · ' + formatTime(entry.updatedAt) : '')
+      const inner =
+        '<table><tr><td class="t"><div class="ttl">' +
+        escapeHtml(entry.name) +
         '</div><p class="meta">' +
-        where +
-        formatSize(entry.size) +
-        ' · ' +
-        formatTime(entry.updatedAt) +
-        '</p></td><td class="g">›</td></tr></table></a>'
-      )
+        meta +
+        (entry.kind === 'other' ? ' · 不能预览' : '') +
+        '</p></td><td class="g">' +
+        (entry.dir || entry.kind !== 'other' ? '›' : '') +
+        '</td></tr></table>'
+      if (entry.dir)
+        return '<a class="row" href="' + escapeHtml(dirHref(entry.path)) + '">' + inner + '</a>'
+      if (entry.kind === 'other') return '<div class="row dim">' + inner + '</div>'
+      const from = encodeURIComponent(self)
+      const base =
+        entry.kind === 'md'
+          ? '/f?p=' + encodeURIComponent(entry.path) + '&from=' + from
+          : entry.kind === 'text'
+            ? '/t?p=' + encodeURIComponent(entry.path) + '&from=' + from
+            : '/i?p=' + encodeURIComponent(entry.path) + '&from=' + from
+      return '<a class="row" href="' + escapeHtml(base) + '">' + inner + '</a>'
     })
     .join('\n')
   const sub =
-    view.workspace +
-    ' · ' +
-    view.entries.length +
-    ' 个文件' +
-    (view.truncated ? ' · 只列最近 60 个' : '')
+    view.label + ' · ' + view.entries.length + ' 项' + (view.truncated ? ' · 只列前 60 项' : '')
   const body = `
 ${toolBar(back, `<a href="${escapeHtml(self)}">刷新</a>`)}
-${pageHead('Markdown 文件', sub)}
-${rows || '<div class="empty"><p class="t">这个目录还没有 Markdown 文件</p><p class="hint">让 DSH 把交付物写进当前工作区，再回来刷新。</p></div>'}`
-  return shell('Markdown 文件', body, { fontSize: config.fontSize, indent: config.indent })
+${pageHead('文件', sub)}
+<div class="pad bc">${crumbs}</div>
+${up}${rows || '<div class="empty"><p class="t">这个目录是空的</p><p class="hint">往工作区里写点东西，再回来刷新。</p></div>'}`
+  return shell('文件', body, { fontSize: config.fontSize, indent: config.indent })
+}
+
+export function renderTextView(config: KindleConfig, view: TextView): string {
+  const from = view.from || '/files'
+  const self =
+    '/t?p=' +
+    encodeURIComponent(view.path) +
+    (view.from ? '&from=' + encodeURIComponent(view.from) : '')
+  const sub =
+    view.dir +
+    ' · ' +
+    formatSize(view.size) +
+    (view.updatedAt ? ' · ' + formatTime(view.updatedAt) : '')
+  const body = `
+${toolBar(`<a href="${escapeHtml(from)}">‹ 返回</a>`, `<a href="${escapeHtml(self)}">刷新</a>`)}
+${pageHead(view.name, sub)}
+<div class="msg a"><div class="body"><pre class="plain">${escapeHtml(view.source)}</pre></div></div>
+`
+  return shell(view.name, body, { fontSize: config.fontSize, bodyClass: 'hei' })
 }
 
 export function renderFile(config: KindleConfig, view: FileView): string {

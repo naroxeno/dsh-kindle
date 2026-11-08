@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -429,7 +429,27 @@ writeFileSync(textPath, 'not markdown')
 const filesPage = await req('/files?s=' + forkId, { headers: { cookie } })
 checkHtmlHeaders('files page', filesPage)
 console.log('37 file list ->', filesPage.status, 'listed', filesPage.text.includes('交付报告.md'),
-  'md only', !filesPage.text.includes('笔记.txt'), 'back', filesPage.text.includes('‹ 会话'))
+  'text listed', filesPage.text.includes('笔记.txt'), 'back', filesPage.text.includes('‹ 会话'))
+
+const subDir = join(cwd, '资料')
+mkdirSync(subDir, { recursive: true })
+writeFileSync(join(subDir, '说明.md'), '# 说明\n\n这是子目录。\n')
+writeFileSync(join(subDir, '图.png'), Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+  'base64'))
+const rootList = (await req('/files?s=' + forkId, { headers: { cookie } })).text
+const subList = (await req('/files?p=' + encodeURIComponent(subDir) + '&s=' + forkId,
+  { headers: { cookie } })).text
+const subMd = (await req('/f?p=' + encodeURIComponent(join(subDir, '说明.md')) + '&from=' + encodeURIComponent('/files?p=' + encodeURIComponent(subDir)),
+  { headers: { cookie } })).text
+const textView = await req('/t?p=' + encodeURIComponent(textPath) + '&from=' + encodeURIComponent('/files'),
+  { headers: { cookie } })
+console.log('37b browser ->', 'dir row', rootList.includes('资料'),
+  'dir href', rootList.includes('/files?p=' + encodeURIComponent(subDir)),
+  'sub md', subList.includes('说明.md'), 'sub img', subList.includes('图.png'),
+  'up', subList.includes('上一级'), 'crumb', subList.includes('资料'),
+  'md opens', subMd.includes('这是子目录'), 'text', textView.status, textView.text.includes('class="plain"'),
+  textView.text.includes('not markdown'))
 
 const docPage = await req('/f?p=' + encodeURIComponent(reportPath) + '&from=' + encodeURIComponent('/c/' + forkId), { headers: { cookie } })
 checkHtmlHeaders('file page', docPage)
