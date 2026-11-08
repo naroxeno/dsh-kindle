@@ -20,11 +20,30 @@ interface Piece {
   alt?: string
 }
 
+export interface MarkdownHeading {
+  level: number
+  text: string
+  /** Index into MarkdownDoc.blocks where this heading starts. */
+  block: number
+}
+
+export interface MarkdownDoc {
+  html: string
+  blocks: string[]
+  headings: MarkdownHeading[]
+}
+
 export function renderMarkdown(src: string, opts: MarkdownOptions = {}): string {
+  return renderMarkdownDoc(src, opts).html
+}
+
+/** Same renderer, but keeps the block list so a caller can build a table of contents. */
+export function renderMarkdownDoc(src: string, opts: MarkdownOptions = {}): MarkdownDoc {
   const fontPx = opts.fontPx || 30
   const text = String(src || '').replace(/\r\n?/g, '\n')
   const lines = text.split('\n')
   const blocks: string[] = []
+  const headings: MarkdownHeading[] = []
   let i = 0
 
   while (i < lines.length) {
@@ -64,6 +83,7 @@ export function renderMarkdown(src: string, opts: MarkdownOptions = {}): string 
     if (heading) {
       const level = Math.min(heading[1].length + 1, 6)
       blocks.push(`<h${level}>${inline(heading[2], fontPx, opts)}</h${level}>`)
+      headings.push({ level, text: heading[2].trim(), block: blocks.length - 1 })
       i += 1
       continue
     }
@@ -133,7 +153,7 @@ export function renderMarkdown(src: string, opts: MarkdownOptions = {}): string 
 
     const lone = /^\s{0,3}!\[([^\]\n]{0,200})\]\(([^)\s]{1,2000})\)\s*$/.exec(line)
     if (lone) {
-      blocks.push(imageHtml(lone[2], lone[1], opts.cwd))
+      blocks.push(imageHtml(lone[2], lone[1], opts.cwd, opts.from))
       i += 1
       continue
     }
@@ -150,7 +170,7 @@ export function renderMarkdown(src: string, opts: MarkdownOptions = {}): string 
     blocks.push(`<p>${inline(para.join('\n'), fontPx, opts)}</p>`)
   }
 
-  return blocks.join('\n')
+  return { html: blocks.join('\n'), blocks, headings }
 }
 
 function startsBlock(lines: string[], i: number): boolean {
@@ -292,7 +312,8 @@ export function inline(text: string, fontPx = 30, opts: MarkdownOptions = {}): s
 
   return pieces
     .map((piece) => {
-      if (piece.kind === 'image') return imageHtml(piece.value, piece.alt || '', opts.cwd)
+      if (piece.kind === 'image')
+        return imageHtml(piece.value, piece.alt || '', opts.cwd, opts.from)
       if (piece.kind === 'code') return codeHtml(piece.value, opts)
       if (piece.kind === 'math') {
         const svg = texToSvg(piece.value, { display: piece.display, fontPx })
@@ -313,24 +334,30 @@ function findDelimiter(text: string, from: number, delim: string): number {
 }
 
 function codeHtml(value: string, opts: MarkdownOptions): string {
-  const file = resolveMarkdownPath(value, opts.cwd)
+  const target = resolveLocalTarget(value, opts.cwd)
   const code = `<code>${escapeHtml(value)}</code>`
-  return file ? `<a href="${escapeAttribute(fileHref(file, opts))}">${code}</a>` : code
+  return target ? `<a href="${escapeAttribute(targetHref(target, opts))}">${code}</a>` : code
 }
 
 function emphasis(escaped: string, opts: MarkdownOptions): string {
   let out = escaped
   out = out.replace(/\[([^\]]{1,200})\]\(([^)\s]{1,500})\)/g, (m, label, href) => {
-    const file = resolveMarkdownPath(href, opts.cwd)
-    return `<a href="${escapeAttribute(file ? fileHref(file, opts) : href)}">${label}</a>`
+    const target = resolveLocalTarget(href, opts.cwd)
+    if (target) return `<a href="${escapeAttribute(targetHref(target, opts))}">${label}</a>`
+    if (/^(?:https?:|mailto:)/i.test(href)) {
+      return `<a href="${escapeAttribute(href)}">${label}</a>`
+    }
+    // A relative path that is not a readable file would resolve against the
+    // current route and 404 on tap; show the label as text instead.
+    return label.replace(/^\[(.*)\]$/, '$1')
   })
   out = out.replace(
-    /(^|[\s(（【「『"'、，。：；:])([^\s<>"'()?，。；、！？」』]{1,300}\.(?:md|markdown))(?=$|[\s)）】」』"'、，。：；:])/gi,
+    /(^|[\s(（【「『"'、，。：；:])([^\s<>"'()?，。；、！？」』]{1,300}\.(?:md|markdown|png|jpe?g|gif|svg|webp))(?=$|[\s)）】」』"'、，。：；:])/gi,
     (match, lead: string, token: string) => {
       if (token.indexOf('://') !== -1 || token.startsWith('//')) return match
-      const file = resolveMarkdownPath(token, opts.cwd)
-      if (!file) return match
-      return lead + `<a href="${escapeAttribute(fileHref(file, opts))}">${token}</a>`
+      const target = resolveLocalTarget(token, opts.cwd)
+      if (!target) return match
+      return lead + `<a href="${escapeAttribute(targetHref(target, opts))}">${token}</a>`
     },
   )
   out = out.replace(/(^|[\s(])((?:https?|mailto):[^\s<>()]{4,300})/g, (m, lead, url) => {
@@ -381,12 +408,54 @@ function fileHref(path: string, opts: MarkdownOptions): string {
   return '/f?p=' + encodeURIComponent(path) + from
 }
 
+type LocalTarget = { path: string; kind: 'md' | 'image' }
+
+const TARGET_CACHE = new Map<string, { target: LocalTarget | null; at: number }>()
+
+/** Resolve a link target to a local Markdown file or image, or null when it is not one. */
+export function resolveLocalTarget(raw: string, cwd?: string): LocalTarget | null {
+  let href = String(raw || '').trim()
+  if (href.startsWith('<') && href.endsWith('>')) href = href.slice(1, -1).trim()
+  if (!href || href.length > 400) return null
+  if (/^(?:[a-z][a-z0-9+.-]*:|\/\/|#)/i.test(href)) return null
+  const isMd = MARKDOWN_EXT.test(href)
+  const ext = extname(href.split(/[?#]/)[0]).toLowerCase()
+  const isImage = IMAGE_EXTS.has(ext)
+  if (!isMd && !isImage) return null
+  if (href.startsWith('~')) href = homedir() + href.slice(1)
+  const path = isAbsolute(href) ? href : resolve(cwd || process.cwd(), href)
+  const cached = TARGET_CACHE.get(path)
+  const now = Date.now()
+  if (cached && now - cached.at < 10_000) {
+    return cached.target
+  }
+  let target: LocalTarget | null = null
+  try {
+    if (statSync(path).isFile()) target = { path, kind: isMd ? 'md' : 'image' }
+  } catch {
+    target = null
+  }
+  if (TARGET_CACHE.size > 128) TARGET_CACHE.clear()
+  TARGET_CACHE.set(path, { target, at: now })
+  return target
+}
+
+/** Link used for an image preview page, which unlike #anchors works on the Kindle. */
+export function imageHref(path: string, opts: MarkdownOptions): string {
+  const from = opts.from ? '&from=' + encodeURIComponent(opts.from) : ''
+  return '/i?p=' + encodeURIComponent(path) + from
+}
+
+function targetHref(target: LocalTarget, opts: MarkdownOptions): string {
+  return target.kind === 'md' ? fileHref(target.path, opts) : imageHref(target.path, opts)
+}
+
 const IMAGE_EXTS = new Set(['.svg', '.png', '.jpg', '.jpeg', '.gif', '.webp'])
 const IMAGE_CACHE = new Map<string, { key: string; html: string }>()
 const IMAGE_CACHE_LIMIT = 32
 
 /** ![alt](src) -> inline SVG (line art) or a data URI (raster), so e-ink clients need no extra route. */
-function imageHtml(src: string, alt: string, cwd?: string): string {
+function imageHtml(src: string, alt: string, cwd?: string, from?: string): string {
   const label = alt ? escapeHtml(alt).trim() : ''
   let href = src.trim()
   if (href.startsWith('<') && href.endsWith('>')) href = href.slice(1, -1).trim()
@@ -401,7 +470,9 @@ function imageHtml(src: string, alt: string, cwd?: string): string {
   try {
     const stat = statSync(path)
     if (!stat.isFile()) return missing
-    const key = `${stat.size}:${Math.floor(stat.mtimeMs)}`
+    const key = `${stat.size}:${Math.floor(stat.mtimeMs)}:${from || ''}`
+    const page =
+      '/i?p=' + encodeURIComponent(path) + (from ? '&from=' + encodeURIComponent(from) : '')
     const cached = IMAGE_CACHE.get(path)
     if (cached && cached.key === key) return cached.html
     let html: string
@@ -410,12 +481,12 @@ function imageHtml(src: string, alt: string, cwd?: string): string {
       let svg = readFileSync(path, 'utf8')
       svg = svg.replace(/<\?xml[\s\S]*?\?>/g, '').replace(/<!DOCTYPE[^>]*>/gi, '')
       if (/<script|\son[a-z]+\s*=/i.test(svg)) return missing
-      html = `<figure class="fig" role="img" aria-label="${label}">${svg}</figure>`
+      html = `<figure class="fig" role="img" aria-label="${label}"><a href="${escapeAttribute(page)}">${svg}</a></figure>`
     } else {
       if (stat.size > 8 * 1024 * 1024) return missing
       const version = Math.floor(stat.mtimeMs).toString(36)
       const url = `/img?p=${encodeURIComponent(path)}&v=${version}`
-      html = `<figure class="fig"><img src="${escapeAttribute(url)}" alt="${label}"></figure>`
+      html = `<figure class="fig"><a href="${escapeAttribute(page)}"><img src="${escapeAttribute(url)}" alt="${label}"></a></figure>`
     }
     IMAGE_CACHE.set(path, { key, html })
     if (IMAGE_CACHE.size > IMAGE_CACHE_LIMIT) IMAGE_CACHE.clear()

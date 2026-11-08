@@ -1,6 +1,6 @@
 const STAMP = new URL(import.meta.url).search
 const { escapeHtml, texToSvg, convertPromptMath } = await import('./math.js' + STAMP)
-const { renderMarkdown, inline } = await import('./markdown.js' + STAMP)
+const { renderMarkdown, renderMarkdownDoc, inline } = await import('./markdown.js' + STAMP)
 const { priceWindow } = await import('./account.js' + STAMP)
 
 import type { KindleConfig } from './host.js'
@@ -101,6 +101,17 @@ export interface FileView {
   size: number
   updatedAt?: number
   source: string
+  from?: string
+  /** Block index of the heading to open at; the Kindle cannot jump to #anchors. */
+  at?: number
+}
+
+export interface ImageView {
+  path: string
+  name: string
+  dir: string
+  size: number
+  updatedAt?: number
   from?: string
 }
 
@@ -248,6 +259,13 @@ input[type=text],input[type=password]{display:block;width:100%;height:104px;padd
    articles and Markdown files opt out. */
 body.ind .msg .body p{text-indent:2em}
 body.indart .msg .body p{text-indent:2em}
+.toc a{display:block;padding:16px 0;border-bottom:1px solid #000;color:#000;text-decoration:underline}
+.toc a.lv2{padding-left:32px;font-size:0.94em}
+.toc a.lv3{padding-left:64px;font-size:0.9em;color:#333}
+.fig{margin:16px 0;text-align:center}
+.fig img{max-width:100%;height:auto;border:1px solid #000}
+.shot{margin:16px 0;text-align:center}
+.shot img{max-width:100%;height:auto}
 .msg .body h2,.msg .body h3,.msg .body h4{font-size:1.04em;line-height:1.4;margin:28px 0 12px}
 .msg .body ul,.msg .body ol{margin:16px 0;padding-left:40px}
 .msg .body li{margin:8px 0}
@@ -965,15 +983,42 @@ export function renderFile(config: KindleConfig, view: FileView): string {
     '/f?p=' +
     encodeURIComponent(view.path) +
     (view.from ? '&from=' + encodeURIComponent(view.from) : '')
-  const html = renderMarkdown(view.source, { fontPx, cwd: view.dir, from: view.from })
+  const doc = renderMarkdownDoc(view.source, { fontPx, cwd: view.dir, from: view.from })
+
+  // The Kindle browser cannot follow #anchors, so the table of contents reloads
+  // the page starting at the chosen heading instead of jumping down the page.
+  type Head = { level: number; text: string; block: number }
+  const heads = doc.headings.filter((head: Head) => head.level <= 3)
+  const asked = typeof view.at === 'number' ? view.at : NaN
+  const start = heads.find((head: Head) => head.block === asked)
+  const html = start ? doc.blocks.slice(start.block).join('\n') : doc.html
   const sub =
     view.dir +
     ' · ' +
     formatSize(view.size) +
     (view.updatedAt ? ' · ' + formatTime(view.updatedAt) : '')
+
+  const toc =
+    !start && heads.length >= 3
+      ? '<div class="pad"><div class="sect">目录</div><div class="toc">' +
+        heads
+          .map(
+            (head: Head) =>
+              `<a class="lv${Math.min(head.level, 3)}" href="${escapeHtml(self + '&at=' + head.block)}">` +
+              escapeHtml(head.text) +
+              '</a>',
+          )
+          .join('') +
+        '</div></div>'
+      : ''
+  const where = start
+    ? `<div class="pad"><p class="hint">从「${escapeHtml(start.text)}」开始 · <a href="${escapeHtml(self)}">显示全文</a></p></div>`
+    : ''
+
   const body = `
 ${toolBar(`<a href="${escapeHtml(back)}">‹ 返回</a>`, `<a href="${escapeHtml(self)}">刷新</a>`)}
 ${pageHead(view.name, sub)}
+${where}${toc}
 <div class="msg a"><div class="body">${html}</div></div>
 `
   return shell(view.name, body, {
@@ -981,6 +1026,23 @@ ${pageHead(view.name, sub)}
     bodyClass: 'hei',
     indentArt: config.indentArt,
   })
+}
+
+/** One image, fitted to the screen width. e-ink is happiest with a plain <img>. */
+export function renderImage(config: KindleConfig, view: ImageView): string {
+  const back = view.from || '/files'
+  const src = '/img?p=' + encodeURIComponent(view.path)
+  const sub =
+    view.dir +
+    ' · ' +
+    formatSize(view.size) +
+    (view.updatedAt ? ' · ' + formatTime(view.updatedAt) : '')
+  const body = `
+${toolBar(`<a href="${escapeHtml(back)}">‹ 返回</a>`, `<a href="${escapeHtml(src)}">原图</a>`)}
+${pageHead(view.name, sub)}
+<div class="shot"><img src="${escapeHtml(src)}" alt="${escapeHtml(view.name)}"></div>
+`
+  return shell(view.name, body, { fontSize: config.fontSize, bodyClass: 'hei' })
 }
 
 export function renderPreview(config: KindleConfig, view: PreviewView): string {

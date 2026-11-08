@@ -330,6 +330,8 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
       if (!info.isFile()) throw new HttpError(404, '文件不存在。')
       if (info.size > MARKDOWN_MAX_BYTES) throw new HttpError(413, '文件太大（上限 1 MB）。')
       const from = safeFrom(url.searchParams.get('from'))
+      const rawAt = url.searchParams.get('at')
+      const at = rawAt === null ? NaN : Number(rawAt)
       sendHtml(
         res,
         200,
@@ -340,6 +342,40 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
           size: info.size,
           updatedAt: info.mtimeMs,
           source: await readFile(file, 'utf8'),
+          ...(from ? { from } : {}),
+          ...(Number.isInteger(at) && at >= 0 ? { at } : {}),
+        }),
+      )
+      return
+    }
+
+    if (method === 'GET' && path === '/i') {
+      const raw = String(url.searchParams.get('p') || '')
+      if (!raw) throw new HttpError(404, '没有指定图片。')
+      const wanted = expandHome(raw)
+      const file = isAbsolute(wanted) ? wanted : resolve(readRoots()[0] || process.cwd(), wanted)
+      if (!readRoots().some((root) => isInside(file, root))) {
+        throw new HttpError(403, '这个图片不在可读目录里。')
+      }
+      if (!IMAGE_MIME[extname(file).toLowerCase()]) throw new HttpError(404, '不是图片。')
+      let info
+      try {
+        info = statSync(file)
+      } catch (error) {
+        throw new HttpError(404, '图片不存在。')
+      }
+      if (!info.isFile()) throw new HttpError(404, '图片不存在。')
+      if (info.size > IMAGE_MAX_BYTES) throw new HttpError(413, '图片太大。')
+      const from = safeFrom(url.searchParams.get('from'))
+      sendHtml(
+        res,
+        200,
+        ui.renderImage(config, {
+          path: file,
+          name: basename(file),
+          dir: dirname(file),
+          size: info.size,
+          updatedAt: info.mtimeMs,
           ...(from ? { from } : {}),
         }),
       )

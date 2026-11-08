@@ -442,13 +442,39 @@ console.log('38 file preview ->', docPage.status, 'heading', docPage.text.includ
   'indent default on', docPage.text.includes('class="hei indart"'),
   'indent off', fileOff.status === 303 && !docPlain.includes('class="hei indart"'))
 
+// --- images and table of contents ---
+const pngPath = join(cwd, '图.png')
+writeFileSync(pngPath, Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+  'base64'))
 append(store.get(forkId), 'assistant/message', {
-  message: { role: 'assistant', content: [{ type: 'text', text: '写好了，见 ' + reportPath + ' 和 `附录.md`。' }] },
+  message: {
+    role: 'assistant',
+    content: [{
+      type: 'text',
+      text: '写好了，见 ' + reportPath + ' 和 `附录.md`。看图 [截图](图.png) 还有 ![截图](图.png) 与 图.png。',
+    }],
+  },
   interrupted: false,
 }, 'append')
 const sessionRef = (await req('/c/' + forkId, { headers: { cookie } })).text
 console.log('39 path autolink ->', sessionRef.includes(encodeURIComponent(reportPath)),
   'inline code link', sessionRef.includes('/f?p=' + encodeURIComponent(reportPath)))
+const imgHref = (sessionRef.match(/\/i\?p=[^"&]+/) || [])[0]
+const imgPage = await req(imgHref + '&from=' + encodeURIComponent('/c/' + forkId), { headers: { cookie } })
+const rawImg = await req('/img?p=' + encodeURIComponent(pngPath), { headers: { cookie } })
+console.log('39b image preview ->', 'link', Boolean(imgHref), 'page', imgPage.status,
+  'shot', imgPage.text.includes('class="shot"'), 'img', imgPage.text.includes('/img?p='),
+  'raw', rawImg.status, rawImg.headers.get('content-type'))
+
+const longPath = join(cwd, '长篇.md')
+writeFileSync(longPath, '# 一\n\n正文一\n\n## 二\n\n正文二\n\n## 三\n\n正文三\n')
+const tocPage = await req('/f?p=' + encodeURIComponent(longPath), { headers: { cookie } })
+const atIndex = (tocPage.text.match(/at=(\d+)/g) || [])[1].slice(3)
+const jumpPage = await req('/f?p=' + encodeURIComponent(longPath) + '&at=' + atIndex, { headers: { cookie } })
+console.log('39c table of contents ->', tocPage.status, 'toc', tocPage.text.includes('class="toc"'),
+  'entries', tocPage.text.includes('>二<') && tocPage.text.includes('>三<'),
+  'jump', jumpPage.text.includes('从「二」开始'), 'starts late', !jumpPage.text.includes('正文一'))
 
 const denied = await req('/f?p=' + encodeURIComponent('/etc/hosts'), { headers: { cookie } })
 const notMarkdown = await req('/f?p=' + encodeURIComponent(textPath), { headers: { cookie } })
