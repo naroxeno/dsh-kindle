@@ -321,11 +321,13 @@ console.log('23 account page ->', me.status, 'balance', me.text.includes('¥12.3
 
 const forkPage = await req('/c/' + forkId, { headers: { cookie } })
 console.log('27 fork page ->', forkPage.status, 'bubbles', /class="msg (u|a)"/.test(forkPage.text))
-const effortButtons = (forkPage.text.match(/class="mini(?: on)?"/g) || []).length
-console.log('24 effort bar ->', forkPage.status, 'bar', forkPage.text.includes('class="modelbar"'),
-  'labels', forkPage.text.includes('关') && forkPage.text.includes('低') && forkPage.text.includes('最大'),
+const forkCompose = (await req(`/c/${forkId}/input`, { headers: { cookie } })).text
+const effortButtons = (forkCompose.match(/class="mini(?: on)?"/g) || []).length
+console.log('24 effort bar ->', forkPage.status, 'bar', forkCompose.includes('class="modelbar"'),
+  'labels', forkCompose.includes('关') && forkCompose.includes('低') && forkCompose.includes('最大'),
   'four', effortButtons === 4,
-  'current', /class="mini on" disabled>最大</.test(forkPage.text))
+  'composer', forkCompose.includes('id="msg"') && !forkPage.text.includes('id="msg"'),
+  'current', /class="mini on" disabled>最大</.test(forkCompose))
 
 const setHigh = await req(`/c/${forkId}/effort`, {
   method: 'POST',
@@ -341,7 +343,7 @@ const badEffort = await req(`/c/${forkId}/effort`, {
 })
 console.log('26 effort guard ->', badEffort.status)
 
-const effortShown = (await req('/c/' + forkId, { headers: { cookie } })).text
+const effortShown = (await req('/c/' + forkId + '/input', { headers: { cookie } })).text
 console.log('29 effort shown ->', /class="mini on" disabled>高</.test(effortShown))
 
 const listAfter = (await req('/s', { headers: { cookie } })).text

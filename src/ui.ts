@@ -28,8 +28,6 @@ interface ShellOptions {
 
 export interface ListExtras {
   balance?: string
-  page?: number
-  pages?: number
   total?: number
   /** Title filter currently applied; the box is refilled from it. */
   query?: string
@@ -67,12 +65,18 @@ export interface SessionView {
   hasOlder?: boolean
   hasTools?: boolean
   window: number
-  draft?: string
-  model?: UiModelChoice | null
   cursor?: number
   fresh?: boolean
   updatedAt?: number
   version?: string
+}
+
+export interface ComposerView {
+  sessionId: string
+  title?: string
+  draft?: string
+  running?: boolean
+  model?: UiModelChoice | null
 }
 
 export interface FileRow {
@@ -152,7 +156,7 @@ const SANS =
 const STYLE = (fontSize: number): string => `
 *{box-sizing:border-box}
 html,body{margin:0;padding:0;background:#fff;color:#000}
-body{font-family:${SANS};font-size:${fontSize}px;line-height:1.7;padding-bottom:96px;-webkit-text-size-adjust:100%}
+body{font-family:${SANS};font-size:${fontSize}px;line-height:1.7;padding-bottom:24px;-webkit-text-size-adjust:100%}
 a{color:#000;text-decoration:none;outline:0}
 .hei{font-family:${SANS}}
 h1,h2,h3,h4{font-weight:bold;margin:0}
@@ -166,7 +170,7 @@ h1,h2,h3,h4{font-weight:bold;margin:0}
 .tb .tag{display:inline-block;font-size:0.66em;font-weight:bold;letter-spacing:0.12em;padding:8px 12px;border:2px solid #000;margin-right:14px;vertical-align:middle}
 .tb .tag.peak{background:#000;color:#fff}
 
-.hd{padding:8px 24px 18px;border-bottom:3px solid #000}
+.hd{padding:8px 24px 18px;border-bottom:2px solid #000}
 .hd h1{font-size:1.16em;line-height:1.35;word-wrap:break-word}
 .hd .sub{margin:8px 0 0;font-size:0.82em;color:#555}
 
@@ -179,16 +183,6 @@ h1,h2,h3,h4{font-weight:bold;margin:0}
 .row .meta{margin:5px 0 0;font-size:0.78em;color:#555}
 .row .meta .n{margin-right:14px}
 .row:active{background:#eaeaea}
-.d3{width:100%;border-collapse:collapse;table-layout:fixed}
-.d3 td{padding:0;vertical-align:middle}
-.d3 td.mid{width:92px}
-.dbtn{display:block;height:76px;line-height:70px;border:3px solid #000;background:#fff;color:#000;text-align:center;font-size:0.8em;text-decoration:none}
-.dbtn:active{background:#dcdcdc}
-.dbtn.off{color:#aaa;border-color:#bbb}
-.dbtn.primary{background:#000;color:#fff;font-size:1.2em}
-.dbtn.primary:active{background:#333}
-.d3 td.prev .dbtn{margin-right:12px}
-.d3 td.next .dbtn{margin-left:12px}
 .flag{display:inline-block;border:2px solid #000;background:#000;color:#fff;padding:1px 10px;font-size:1em;line-height:1.35}
 .flag.off{background:#fff;color:#000}
 
@@ -210,9 +204,9 @@ h1,h2,h3,h4{font-weight:bold;margin:0}
 .sb{padding:0 24px 16px}
 .sbar{width:100%;border-collapse:collapse;table-layout:fixed}
 .sbar td{padding:0;vertical-align:middle}
-.sbar td.b{width:168px}
+.sbar td.b{width:180px;padding-left:12px}
 .sbar input{height:92px;font-size:0.92em}
-.sgo{display:block;width:100%;height:92px;line-height:86px;margin:0 0 0 12px;padding:0;border:3px solid #000;background:#000;color:#fff;font:inherit;font-size:0.88em}
+.sgo{display:block;width:100%;height:92px;line-height:86px;margin:0;padding:0;border:3px solid #000;background:#000;color:#fff;font:inherit;font-size:0.88em}
 .sgo:active{background:#333}
 .hits{margin:14px 0 0;font-size:0.82em;color:#555}
 .hits a{text-decoration:underline}
@@ -271,7 +265,7 @@ input[type=text],input[type=password]{display:block;width:100%;height:104px;padd
 .toolbody{font-family:monospace;font-size:0.72em;line-height:1.55;color:#555;white-space:pre-wrap;word-wrap:break-word}
 .toolbody.err{color:#8a0000}
 
-.st{padding:20px 24px;border-bottom:2px solid #ddd;background:#f1f1f1;font-size:0.86em}
+.st{padding:20px 24px;background:#f1f1f1;font-size:0.86em}
 .older{display:block;padding:24px 0;border-bottom:2px solid #ddd;text-align:center;font-size:0.86em}
 .older:active{background:#eaeaea}
 
@@ -290,10 +284,10 @@ figure.fig figcaption{margin-top:10px;font-size:0.74em;color:#444}
 .palette button{display:block;width:100%;height:92px;padding:0;border:2px solid #000;background:#fff;color:#000;font-size:0.86em;line-height:1.15}
 .palette button:active{background:#e8e8e8}
 
-body.ls{padding-bottom:0}
-body.ls #scroll{padding-bottom:24px}
-.dock{border-top:2px solid #000;background:#fff;padding:6px 24px 8px}
-.dock .btn{height:110px;line-height:104px;font-size:1em}
+.newbtn{display:block;height:96px;line-height:90px;margin:20px 0 8px;border:3px solid #000;background:#000;color:#fff;text-align:center;text-decoration:none;font-size:1em}
+.newbtn:active{background:#333}
+.stbtn{display:block;width:100%;height:84px;padding:0;border:0;border-bottom:2px solid #000;background:#f1f1f1;color:#000;text-align:center;font:inherit;font-size:0.86em}
+.stbtn:active{background:#d0d0d0}
 `
 
 function shell(title: string, body: string, opts: ShellOptions = {}): string {
@@ -343,44 +337,6 @@ function paletteTable(): string {
     rows.push(`<tr>${cells}</tr>`)
   }
   return `<table class="palette">${rows.join('')}</table>`
-}
-
-function dockScript(): string {
-  // Make the list end exactly at the bottom edge: the page must not scroll by
-  // a few pixels, and the leftover height goes into the rows instead of a
-  // white band above the dock.
-  return `
-var sc=document.getElementById('scroll'),hd=document.getElementById('head'),ft=document.getElementById('foot');
-function fitRows(){
-  if(!sc||!hd||!ft){return;}
-  var rows=sc.getElementsByTagName('a'),i;
-  for(i=0;i<rows.length;i++){rows[i].style.height='';}
-  sc.style.minHeight='';
-  // The Kindle browser spends about a fifteenth of the screen on its address
-  // bar, and reports a viewport that still counts it. Reserve that strip so
-  // the dock stays reachable instead of hiding under the bar.
-  var vh=Math.floor((document.documentElement.clientHeight||window.innerHeight||0)*14/15);
-  var cs=window.getComputedStyle?window.getComputedStyle(sc,null):null;
-  var pad=cs?(parseFloat(cs.paddingBottom)||0):0;
-  var avail=vh-hd.offsetHeight-ft.offsetHeight-pad;
-  if(avail<=0){return;}
-  if(rows.length){
-    // Cap the stretch: a search with one hit should not turn that row into a
-    // screen-filling block. Below the cap the rows keep their natural height
-    // and the leftover space stays under the list.
-    var each=Math.min(Math.floor(avail/rows.length),200);
-    if(each>0){
-      for(i=0;i<rows.length;i++){
-        rows[i].style.boxSizing='border-box';
-        rows[i].style.webkitBoxSizing='border-box';
-        rows[i].style.height=each+'px';
-      }
-    }
-  }
-  sc.style.minHeight=avail+'px';
-}
-fitRows();
-window.onresize=fitRows;`
 }
 
 function composerScript(extra: string): string {
@@ -450,52 +406,40 @@ export function renderList(
             .filter(Boolean)
             .join(' ')
           const meta = [formatTime(s.updatedAt), flags].filter(Boolean).join(' ')
-          return `<a class="row" href="/c/${id}"><table><tr><td class="t"><div class="ttl">${escapeHtml(s.title)}</div><div class="meta">${meta}</div></td><td class="g">›</td></tr></table></a>`
+          return (
+            '<a class="row" href="/c/' +
+            id +
+            '"><table><tr><td class="t"><div class="ttl">' +
+            escapeHtml(s.title) +
+            '</div><div class="meta">' +
+            meta +
+            '</div></td><td class="g">›</td></tr></table></a>'
+          )
         })
         .join('')
     : extras.query
       ? '<div class="empty"><p class="t">没有匹配的会话</p><p class="hint">换个词，或者清掉搜索。</p></div>'
-      : '<div class="empty"><p class="t">这里还没有会话</p><p class="hint">点下面的「＋」开一个。</p></div>'
+      : '<div class="empty"><p class="t">这里还没有会话</p><p class="hint">点上面的「＋ 新会话」开一个。</p></div>'
 
   // The balance lives in the top bar: it is one short wallet line, and the
   // scroll area is worth more to a session row on an e-ink screen.
-  const balance = extras.balance ? `<a href="/me">${escapeHtml(extras.balance)}</a>` : ''
+  const balance = extras.balance ? '<a href="/me">' + escapeHtml(extras.balance) + '</a>' : ''
   const query = extras.query || ''
-  const suffix = query ? '&q=' + encodeURIComponent(query) : ''
-
-  const page = extras.page || 1
-  const pages = extras.pages || 1
   const total = extras.total === undefined ? sessions.length : extras.total
-  const sub = [
-    extras.workspace || '',
-    total ? `共 ${total} 个` : '',
-    page > 1 || pages > 1 ? `第 ${page} / ${pages} 页` : '',
-  ]
+  const sub = [extras.workspace || '', total ? '共 ' + total + ' 个' : '']
     .filter(Boolean)
     .join(' · ')
-  const prev =
-    page > 1
-      ? `<a class="dbtn" href="/s?p=${page - 1}${suffix}">‹ 上一页</a>`
-      : '<span class="dbtn off">‹ 上一页</span>'
-  const next =
-    page < pages
-      ? `<a class="dbtn" href="/s?p=${page + 1}${suffix}">下一页 ›</a>`
-      : '<span class="dbtn off">下一页 ›</span>'
-  const dock = `<div id="dock" class="dock"><table class="d3"><tr><td class="prev">${prev}</td><td class="mid"><a class="dbtn primary" href="/new" aria-label="新会话">＋</a></td><td class="next">${next}</td></tr></table></div>`
-
-  const hits = query ? `<p class="hits">找到 ${total} 个 · <a href="/s">清除搜索</a></p>` : ''
+  const hits = query ? '<p class="hits">找到 ' + total + ' 个 · <a href="/s">清除搜索</a></p>' : ''
 
   const body = `
 <div id="head">
 ${toolBar('<span class="brand">DSH · Kindle</span>', `${balance}<a href="/settings">设置</a><a href="/s">刷新</a>`)}
 ${pageHead('会话', sub)}
 ${notice ? `<div class="alert">${escapeHtml(notice)}</div>` : ''}
-<div class="sb"><form method="post" action="/s"><table class="sbar"><tr><td class="f"><input type="text" name="q" value="${escapeHtml(query)}" placeholder="搜索标题" autocomplete="off"></td><td class="b"><button type="submit" class="sgo">搜索</button></td></tr></table></form>${hits}</div>
+<div class="sb"><form method="post" action="/s"><table class="sbar"><tr><td class="f"><input type="text" name="q" value="${escapeHtml(query)}" placeholder="搜索标题" autocomplete="off"></td><td class="b"><button type="submit" class="sgo">搜索</button></td></tr></table></form>${hits}<a class="newbtn" href="/new">＋ 新会话</a></div>
 </div>
-<div id="scroll">${rows}</div>
-<div id="foot">${dock}</div>
-<script>${dockScript()}</script>`
-  return shell('DSH Kindle', body, { fontSize: config.fontSize, bodyClass: 'ls' })
+<div id="scroll">${rows}</div>`
+  return shell('DSH Kindle', body, { fontSize: config.fontSize })
 }
 
 export function renderRename(config: KindleConfig, view: RenameView): string {
@@ -585,7 +529,7 @@ const EFFORT_LABELS: Record<string, string> = {
   max: '最大',
 }
 
-function modelBar(view: SessionView): string {
+function modelBar(view: { sessionId: string; model?: UiModelChoice | null }): string {
   const model = view.model
   if (!model || !Array.isArray(model.efforts) || model.efforts.length < 2) return ''
   const action = `/c/${escapeHtml(view.sessionId)}/effort`
@@ -624,9 +568,13 @@ export function renderAccount(config: KindleConfig, view: AccountPageView): stri
       out.push('<div class="lbl">余额</div>')
       out.push(`<div class="value">${escapeHtml(wallet.text)}</div>`)
     }
-    if (account.bonuses && account.bonuses.length) {
-      const text = account.bonuses.map((wallet) => wallet.text).join(' / ')
-      out.push(`<p class="hint">另有赠送余额 ${escapeHtml(text)}（不计入上面的余额）</p>`)
+    const bonus = (account.bonuses || [])
+      .map((wallet) => String(wallet.text || '').trim())
+      .map((text) => ({ text, value: Number(text.replace(/[¥￥,\s]/g, '')) }))
+      .filter((entry) => entry.text && entry.value > 0)
+      .map((entry) => entry.text)
+    if (bonus.length) {
+      out.push('<p class="hint">另有赠送 ' + escapeHtml(bonus.join(' / ')) + '（不计入余额）</p>')
     }
   } else if (account.reason === 'no-service') {
     out.push('<p>这个 Host 没有挂载账户服务，读不到余额。</p>')
@@ -644,7 +592,6 @@ export function renderAccount(config: KindleConfig, view: AccountPageView): stri
     ? `<a class="row" href="${escapeHtml(links.topUpUrl)}"><table><tr><td class="t"><div class="ttl">去充值</div></td><td class="g">›</td></tr></table></a>`
     : ''
   out.push(usage, topUp)
-  out.push('<div class="pad"><p class="hint">余额由平台账户接口读取，本机缓存两分钟。</p></div>')
   return shell('账户', out.join(''), { fontSize: config.fontSize })
 }
 
@@ -666,6 +613,7 @@ export interface SettingsView {
   registered: boolean
   registryReady: boolean
   choices: SettingsChoice[]
+  query?: string
   ungrouped: number
   notice?: SettingsNotice
   settingsFile?: string
@@ -680,6 +628,19 @@ export function renderSettings(config: KindleConfig, view: SettingsView): string
     ? `<div class="alert${view.notice.error ? ' err' : ''}">${escapeHtml(view.notice.text)}</div>`
     : ''
 
+  const query = view.query || ''
+  const hits = query
+    ? '<p class="hits">筛出 ' + view.choices.length + ' 个 · <a href="/settings">清除</a></p>'
+    : ''
+  const search =
+    view.choices.length >= 6 || query
+      ? '<div class="sb"><form method="post" action="/settings"><input type="hidden" name="action" value="filter"><table class="sbar"><tr><td class="f"><input type="text" name="q" value="' +
+        escapeHtml(query) +
+        '" placeholder="筛选工作区" autocomplete="off"></td><td class="b"><button type="submit" class="sgo">筛选</button></td></tr></table></form>' +
+        hits +
+        '</div>'
+      : ''
+
   const choices = view.choices.length
     ? view.choices
         .map(
@@ -687,7 +648,9 @@ export function renderSettings(config: KindleConfig, view: SettingsView): string
             `<form method="post" action="/settings"><input type="hidden" name="action" value="save"><input type="hidden" name="path" value="${escapeHtml(choice.path)}"><button type="submit" class="mode${choice.current ? ' on' : ''}"><span class="n">${escapeHtml(choice.title)}${choice.current ? '<span class="badge">当前</span>' : ''}</span><span class="d">${escapeHtml(choice.path)}</span></button></form>`,
         )
         .join('')
-    : '<p class="hint">这个 Host 还没有注册过工作区。</p>'
+    : query
+      ? '<p class="hint">没有匹配的工作区，换个词或者清掉筛选。</p>'
+      : '<p class="hint">这个 Host 还没有注册过工作区。</p>'
 
   const adopt = view.ungrouped
     ? `<form method="post" action="/settings"><input type="hidden" name="action" value="adopt"><button type="submit" class="btn">把 ${view.ungrouped} 个旧会话归组</button></form><p class="hint">只动当前目录里的会话，别的组不受影响。</p>`
@@ -711,6 +674,7 @@ ${notice}
 <p class="hint">${escapeHtml(view.path)}${view.registered ? ' · 已注册' : ' · 还没注册'}</p>
 ${registry}
 <div class="sect">换成已有工作区</div>
+${search}
 ${choices}
 <div class="sect">其他目录</div>
 <form method="post" action="/settings">
@@ -803,23 +767,28 @@ ${pageHead('工具调用', sub)}
 
 export function renderSession(config: KindleConfig, view: SessionView): string {
   const id = escapeHtml(view.sessionId)
+  const compose = '/c/' + id + '/input'
   const older = view.hasOlder
-    ? `<a class="older" href="/c/${id}?n=${view.window + config.pageSize}">↑ 更早的消息</a>`
+    ? '<a class="older" href="/c/' +
+      id +
+      '?n=' +
+      (view.window + config.pageSize) +
+      '">↑ 更早的消息</a>'
     : ''
   const stop = view.running ? '' : ' style="display:none"'
 
   const body = `
 ${toolBar(`<a href="/s">‹ 列表</a>`, `<a href="/c/${id}">刷新</a>`)}
 ${pageHead(view.title || '会话', formatTime(view.updatedAt) ? `更新于 ${formatTime(view.updatedAt)}` : '')}
-${modelBar(view)}
 <table class="strip"><tr>
-  <td><form method="post" action="/c/${id}/fork"><button type="submit" class="cell">分叉</button></form></td>
+  <td><a class="cell" href="${compose}">✎ 输入</a></td>
   <td><a class="cell" href="/files?s=${escapeHtml(view.sessionId)}">文件</a></td>
+  <td><form method="post" action="/c/${id}/fork"><button type="submit" class="cell">分叉</button></form></td>
   <td><a class="cell" href="/c/${id}/rename">改名</a></td>
   <td><a class="cell" href="/c/${id}/delete">删除</a></td>
-  <td><a class="cell" href="#composer">✎ 输入</a></td>
 </tr></table>
-<div class="st" id="state"${view.running ? '' : ' style="display:none"'}>${view.running ? '正在生成……（新内容会自动追加）' : ''}</div>
+<div class="st" id="state"${view.running ? '' : ' style="display:none"'}>${view.running ? '生成中 · 新内容自动追加' : ''}</div>
+<form id="stopbtn" method="post" action="/c/${id}/stop"${stop}><button type="submit" class="stbtn">■ 停止生成</button></form>
 ${older}
 <div id="msgs">${renderMessages(
     config,
@@ -830,28 +799,41 @@ ${older}
       from: '/c/' + encodeURIComponent(view.sessionId),
     },
   )}</div>
-<div class="composer" id="composer">
-  <div class="sect">输入</div>
-  <p class="hint">公式用 $…$ 包起来，用 AsciiMath 语法（例：$sqrt(x^2+y^2)$、$int_0^1 f(x) dx$）。</p>
+<script>${runTail(view.sessionId, view.cursor, view.running, Boolean(view.fresh || view.running), Boolean(view.fresh))}</script>`
+
+  return shell(view.title || '会话', body, { fontSize: config.fontSize, bodyClass: 'hei' })
+}
+
+export function renderComposer(config: KindleConfig, view: ComposerView): string {
+  const id = escapeHtml(view.sessionId)
+  const back = '/c/' + id
+  const stop = view.running ? '' : ' style="display:none"'
+  const status = view.running ? '<div class="st">生成中 · 可以继续发，回复会接在后面。</div>' : ''
+
+  const body = `
+${toolBar(`<a href="${back}">‹ 会话</a>`, `<a href="${back}">刷新</a>`)}
+${pageHead('输入', view.title || '')}
+${status}
+<div class="composer">
+  <p class="hint">公式用 $…$ 包起来，例：$sqrt(x^2+y^2)$、$int_0^1 f(x) dx$。</p>
   <form method="post" action="/c/${id}/send">
     <textarea id="msg" name="msg" rows="7">${escapeHtml(view.draft || '')}</textarea>
     <div class="stack">
       <button type="submit" class="btn primary">发送</button>
       <button type="button" class="btn" onclick="return doPreview()">预览公式</button>
-      <button type="button" class="btn" id="stopbtn" onclick="return doStop()"${stop}>停止生成</button>
     </div>
   </form>
+  ${modelBar(view)}
   <div class="sect">公式</div>
   ${paletteTable()}
   <form id="preview-form" method="post" action="/c/${id}/preview" style="display:none">
     <input type="hidden" name="msg" id="preview-msg">
   </form>
-  <form id="stop-form" method="post" action="/c/${id}/stop" style="display:none"></form>
+  <form method="post" action="/c/${id}/stop"${stop}><button type="submit" class="btn">停止生成</button></form>
 </div>
+<script>${composerScript('')}</script>`
 
-<script>${composerScript(runTail(view.sessionId, view.cursor, view.running, Boolean(view.fresh || view.running), Boolean(view.fresh)))}</script>`
-
-  return shell(view.title || '会话', body, { fontSize: config.fontSize, bodyClass: 'hei' })
+  return shell('输入', body, { fontSize: config.fontSize, bodyClass: 'hei' })
 }
 
 function runTail(
@@ -904,7 +886,7 @@ function runTail(
       apply(d);
       cursor=d.cursor;
       running=d.running===1;
-      setState(running?'正在生成……（新内容会自动追加）':'');
+      setState(running?'生成中 · 新内容自动追加':'');
       var btn=byId('stopbtn');
       if(btn){btn.style.display=running?'':'none';}
       if(running){idle=0;setTimeout(tick,3000);return;}
@@ -923,10 +905,28 @@ export function renderFiles(config: KindleConfig, view: FilesView): string {
     ? `<a href="/c/${encodeURIComponent(view.sessionId)}">‹ 会话</a>`
     : `<a href="/s">‹ 列表</a>`
   const self = '/files' + query
+  const seen: Record<string, number> = {}
+  for (const entry of view.entries) seen[entry.name] = (seen[entry.name] || 0) + 1
   const rows = view.entries
     .map((entry) => {
       const href = '/f?p=' + encodeURIComponent(entry.path) + '&from=' + encodeURIComponent(self)
-      return `<a class="row" href="${escapeHtml(href)}"><table><tr><td class="t"><div class="ttl">${escapeHtml(entry.name)}</div><p class="meta"><span class="n">${escapeHtml(entry.relative)}</span>${formatSize(entry.size)} · ${formatTime(entry.updatedAt)}</p></td><td class="g">›</td></tr></table></a>`
+      // Three files called README.md look identical by name alone, so a
+      // duplicate name gets its relative path as the title instead.
+      const dup = (seen[entry.name] || 0) > 1
+      const title = dup ? entry.relative : entry.name
+      const where = dup ? '' : '<span class="n">' + escapeHtml(entry.relative) + '</span>'
+      return (
+        '<a class="row" href="' +
+        escapeHtml(href) +
+        '"><table><tr><td class="t"><div class="ttl">' +
+        escapeHtml(title) +
+        '</div><p class="meta">' +
+        where +
+        formatSize(entry.size) +
+        ' · ' +
+        formatTime(entry.updatedAt) +
+        '</p></td><td class="g">›</td></tr></table></a>'
+      )
     })
     .join('\n')
   const sub =

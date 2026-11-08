@@ -13,7 +13,7 @@ const VERSION: string = JSON.parse(
   readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
 ).version
 
-const LIST_PAGE_SIZE = 5
+const LIST_MAX = 60
 const FILE_PAGE_SIZE = 60
 const MARKDOWN_MAX_BYTES = 1024 * 1024
 
@@ -79,22 +79,13 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
       const all = await sessionsApi.listSessions(ctx, activeCwd())
       const matched = query ? filterSessions(all, query) : all
       const balance = await account.readAccount(services.accountController, { timeoutMs: 1500 })
-      const pages = Math.max(1, Math.ceil(matched.length / LIST_PAGE_SIZE))
-      const page = Math.min(pages, Math.max(1, Number(url.searchParams.get('p')) || 1))
-      const start = (page - 1) * LIST_PAGE_SIZE
       const extras: ListExtras = {
         balance: account.balanceLine(balance),
-        page,
-        pages,
         total: matched.length,
         query,
         workspace: await workspaceLabel(),
       }
-      sendHtml(
-        res,
-        200,
-        ui.renderList(config, matched.slice(start, start + LIST_PAGE_SIZE), '', extras),
-      )
+      sendHtml(res, 200, ui.renderList(config, matched.slice(0, LIST_MAX), '', extras))
       return
     }
 
@@ -109,12 +100,24 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
     }
 
     if (method === 'GET' && path === '/settings') {
-      sendHtml(res, 200, ui.renderSettings(config, await settingsView(noticeFor(url))))
+      sendHtml(
+        res,
+        200,
+        ui.renderSettings(
+          config,
+          await settingsView(noticeFor(url), searchQuery(url.searchParams.get('q'))),
+        ),
+      )
       return
     }
 
     if (method === 'POST' && path === '/settings') {
       const body = await readBody(req)
+      if (String(body.get('action') || '') === 'filter') {
+        const wanted = searchQuery(body.get('q'))
+        redirect(res, wanted ? '/settings?q=' + encodeURIComponent(wanted) : '/settings')
+        return
+      }
       if (String(body.get('action') || '') === 'adopt') {
         try {
           const entry = await sessionsApi.ensureWorkspace(activeCwd())
@@ -347,6 +350,24 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
 
     await prompt.ensureKindlePrompt(ctx.sessionController, sessionId)
 
+    // The composer is its own page: on e-ink the textarea and the whole formula
+    // palette sat three screens below the transcript, so writing a reply meant
+    // scrolling past everything. One tap on the strip opens this page instead.
+    if (method === 'GET' && action === 'input') {
+      const current = await sessionsApi.sessionState(ctx, sessionId, activeCwd())
+      sendHtml(
+        res,
+        200,
+        ui.renderComposer(config, {
+          sessionId,
+          title: current ? current.title : '',
+          running: current ? current.running : false,
+          model: await modelInfo(ctx, sessionsApi, sessionId),
+        }),
+      )
+      return
+    }
+
     if (method === 'GET' && action === '') {
       const window = clampInt(
         Number(url.searchParams.get('n')) || config.pageSize,
@@ -368,7 +389,6 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
         }
       }
       const visible = windowMessages(transcript.messages, window)
-      const model = await modelInfo(ctx, sessionsApi, sessionId)
       sendHtml(
         res,
         200,
@@ -385,7 +405,6 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
           hasTools: visible.some((message) => message.kind === 'tool'),
           cursor: visible.length ? visible[visible.length - 1].seq : 0,
           window,
-          model,
         }),
       )
       return
@@ -530,7 +549,7 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
       const known = model.efforts.some((entry) => entry.id === effort)
       if (!known) throw new HttpError(400, '这个模型不支持该思考强度。')
       await sessionsApi.setReasoningEffort(ctx, sessionId, effort)
-      redirect(res, '/c/' + encodeURIComponent(sessionId))
+      redirect(res, '/c/' + encodeURIComponent(sessionId) + '/input')
       return
     }
 
@@ -676,18 +695,27 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
     return basename(path) || path
   }
 
-  async function settingsView(notice?: SettingsNotice): Promise<SettingsView> {
+  async function settingsView(notice?: SettingsNotice, query?: string): Promise<SettingsView> {
     const path = activeCwd()
     const list = (await sessionsApi.listWorkspaces()) || []
     const current = list.find((entry) => entry.path === path)
     const sessions = await sessionsApi.listSessions(ctx, path)
     const member = new Set(current ? current.sessionIds : [])
+    const needle = (query || '').toLowerCase()
+    const shown = needle
+      ? list.filter(
+          (entry) =>
+            (entry.title || '').toLowerCase().includes(needle) ||
+            entry.path.toLowerCase().includes(needle),
+        )
+      : list
     return {
       path,
       title: current && current.title ? current.title : basename(path) || path,
       registered: Boolean(current),
       registryReady: Boolean(services.workspaceRegistry && services.workspaceRegistry.list),
-      choices: list.map((entry) => ({
+      query,
+      choices: shown.map((entry) => ({
         id: entry.id,
         path: entry.path,
         title: entry.title || basename(entry.path) || entry.path,
