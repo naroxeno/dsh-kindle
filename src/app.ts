@@ -5,10 +5,19 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import { homedir } from 'node:os'
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import type { Generation } from './generation.js'
-import type { KindleApp, KindleContext, KindleHost, KindleLogger, ModelChoice } from './host.js'
+import type {
+  KindleApp,
+  KindleContext,
+  KindleHost,
+  KindleLogger,
+  ModelChoice,
+  UserQuestion,
+  UserQuestionAnswerItem,
+  UserQuestionRequest,
+} from './host.js'
 import type { Transcript, TranscriptMessage, WorkspaceEntry } from './sessions.js'
 import { renderFilesPin } from './ui.js'
-import type { FileRow, ListExtras, SettingsNotice, SettingsView } from './ui.js'
+import type { AskView, FileRow, ListExtras, SettingsNotice, SettingsView } from './ui.js'
 
 const STAMP = new URL(import.meta.url).search
 const VERSION: string = JSON.parse(
@@ -18,6 +27,46 @@ const VERSION: string = JSON.parse(
 const LIST_MAX = 60
 const FILE_PAGE_SIZE = 60
 const MARKDOWN_MAX_BYTES = 1024 * 1024
+/** How recently a Kindle page must have polled before it may take a question. */
+const ASK_CLAIM_MS = 45_000
+
+interface PendingAsk {
+  token: string
+  sessionId: string
+  window: number
+  questions: UserQuestion[]
+  resolve: (answer: { answers: UserQuestionAnswerItem[] }) => void
+  reject: (error: unknown) => void
+}
+
+interface AskSeen {
+  at: number
+  window: number
+}
+
+interface AskStore {
+  pending: Map<string, PendingAsk>
+  seen: Map<string, AskSeen>
+}
+
+/** Shared through hot generations so an open question survives a code swap. */
+const ASK_STORE_KEY = Symbol.for('dsh-kindle.ask')
+
+function askStore(): AskStore {
+  const shared = globalThis as unknown as { [key: symbol]: AskStore | undefined }
+  let store = shared[ASK_STORE_KEY]
+  if (!store) {
+    store = { pending: new Map(), seen: new Map() }
+    shared[ASK_STORE_KEY] = store
+  }
+  return store
+}
+
+function askNoticeOf(flag: string | null): string | undefined {
+  if (flag === 'ok') return '已提交回答。'
+  if (flag === 'gone') return '这个问题已经失效了，AI 已经继续。'
+  return undefined
+}
 
 /** A second, separate secret for the file browser: six digits, one hour. */
 const FILES_PIN_FILE = '.kindle-files-pin'
@@ -126,6 +175,52 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
   // the settings file says otherwise.
   config.indentArt = settings.indentArt !== false
   const activeCwd = (): string => settings.workspace || config.cwd
+  const asks = askStore()
+  const ownedAsks = new Set<string>()
+
+  function pendingAskView(sessionId: string): AskView | null {
+    const entry = asks.pending.get(sessionId)
+    return entry
+      ? { token: entry.token, sessionId, window: entry.window, questions: entry.questions }
+      : null
+  }
+
+  function claimQuestion(request: UserQuestionRequest, next: () => unknown): unknown {
+    const agentId = typeof request.agent?.id === 'string' ? request.agent.id : ''
+    const seen = asks.seen.get(agentId)
+    if (!agentId || !Array.isArray(request.questions) || request.questions.length === 0) {
+      return next()
+    }
+    if (!seen || Date.now() - seen.at > ASK_CLAIM_MS || asks.pending.has(agentId)) return next()
+    return new Promise<{ answers: UserQuestionAnswerItem[] }>((resolve, reject) => {
+      const entry: PendingAsk = {
+        token: randomBytes(9).toString('hex'),
+        sessionId: agentId,
+        window: seen.window || config.pageSize,
+        questions: request.questions,
+        resolve,
+        reject,
+      }
+      asks.pending.set(agentId, entry)
+      ownedAsks.add(agentId)
+      const cancel = () => {
+        if (asks.pending.get(agentId) !== entry) return
+        asks.pending.delete(agentId)
+        ownedAsks.delete(agentId)
+        reject(new Error('在 Kindle 上关掉了这个问题'))
+      }
+      const signal = request.signal
+      if (!signal) return
+      if (signal.aborted) cancel()
+      else signal.addEventListener('abort', cancel, { once: true })
+    })
+  }
+
+  const offAsk = ctx.on?.(
+    'user-questions/request',
+    (request: unknown, next: () => unknown) => claimQuestion(request as UserQuestionRequest, next),
+    { prepend: true },
+  )
 
   async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
     try {
@@ -639,6 +734,7 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
         400,
         config.pageSize,
       )
+      asks.seen.set(sessionId, { at: Date.now(), window })
       let transcript: Transcript
       try {
         transcript = await sessionsApi.readTranscript(ctx, sessionId, activeCwd())
@@ -670,6 +766,8 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
           hasTools: visible.some((message) => message.kind === 'tool'),
           cursor: visible.length ? visible[visible.length - 1].seq : 0,
           window,
+          ask: pendingAskView(sessionId),
+          askNotice: askNoticeOf(url.searchParams.get('ask')),
         }),
       )
       return
@@ -712,6 +810,7 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
         400,
         config.pageSize,
       )
+      asks.seen.set(sessionId, { at: Date.now(), window: windowSize })
       const since = Math.max(0, Math.floor(Number(url.searchParams.get('since')) || 0))
       let transcript
       try {
@@ -733,6 +832,7 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
       const appendable = since > 0 && before !== -1 && (floor === 0 || floor > since)
       const pending = appendable ? visible.slice(before + 1) : []
       const toolsHref = '/c/' + encodeURIComponent(sessionId) + '/tools'
+      const ask = pendingAskView(sessionId)
       const payload = {
         mode: appendable ? 'append' : 'replace',
         html: appendable
@@ -749,6 +849,7 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
         cursor,
         running: transcript.running ? 1 : 0,
         version: transcript.updatedAt + ':' + (transcript.running ? 1 : 0),
+        ask: ask ? { id: ask.token, html: ui.renderAsk(config, ask) } : null,
       }
       res.writeHead(200, {
         'content-type': 'application/json; charset=utf-8',
@@ -776,6 +877,44 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
         await sessionsApi.sendPrompt(ctx, sessionId, math.convertPromptMath(draft))
       }
       redirect(res, '/c/' + encodeURIComponent(sessionId) + '?fresh=1')
+      return
+    }
+
+    if (method === 'POST' && action === 'answer') {
+      const body = await readBody(req)
+      const window = clampInt(Number(body.get('n')) || config.pageSize, 1, 400, config.pageSize)
+      const entry = asks.pending.get(sessionId)
+      if (!entry || String(body.get('t') || '') !== entry.token) {
+        redirect(res, '/c/' + encodeURIComponent(sessionId) + '?ask=gone&n=' + window)
+        return
+      }
+      asks.pending.delete(sessionId)
+      ownedAsks.delete(sessionId)
+      const skip = body.get('skip') === '1'
+      const answers: UserQuestionAnswerItem[] = entry.questions.map((question, index) => {
+        if (skip) return { id: question.id, selected: [] }
+        const options = question.options || []
+        const picked: string[] = []
+        for (const raw of body.getAll('p' + index)) {
+          const at = Number(raw)
+          if (!Number.isInteger(at) || at < 0 || at >= options.length) continue
+          const label = options[at].label
+          if (!picked.includes(label)) picked.push(label)
+        }
+        const custom = String(body.get('c' + index) || '')
+          .trim()
+          .slice(0, 4000)
+        if (!question.multiSelect) {
+          return custom
+            ? { id: question.id, selected: [], custom }
+            : { id: question.id, selected: picked.length ? [picked[0]] : [] }
+        }
+        return custom
+          ? { id: question.id, selected: picked, custom }
+          : { id: question.id, selected: picked }
+      })
+      entry.resolve({ answers })
+      redirect(res, '/c/' + encodeURIComponent(sessionId) + '?ask=ok&fresh=1&n=' + window)
       return
     }
 
@@ -869,7 +1008,16 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
     setHost(next) {
       sessionsApi.setHost(next)
     },
-    dispose() {},
+    dispose() {
+      if (typeof offAsk === 'function') offAsk()
+      for (const sessionId of ownedAsks) {
+        const entry = asks.pending.get(sessionId)
+        if (!entry) continue
+        asks.pending.delete(sessionId)
+        entry.reject(new Error('Kindle 插件已卸载'))
+      }
+      ownedAsks.clear()
+    },
     loginPage(next, options) {
       return ui.renderLogin(config, next, options)
     },

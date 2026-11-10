@@ -141,9 +141,17 @@ const sections = []
 const archived = new Set()
 
 const disposers = []
+const listeners = []
 const ctx = {
   logger: (n) => ({ info: (m) => console.log('[log]', m), error: (m) => console.log('[err]', m) }),
   effect: (fn) => { disposers.push(fn()) },
+  on(name, listener, options) {
+    listeners.push({ name, listener, options })
+    return () => {
+      const at = listeners.findIndex((entry) => entry.listener === listener)
+      if (at >= 0) listeners.splice(at, 1)
+    }
+  },
   sessionController,
   llm: {
     async resolveModelInfo(provider, model) {
@@ -289,6 +297,58 @@ const live = store.get(id)
 append(live, 'tool/result', { message: { role: 'tool', toolCallId: 'c1', content: [{ type: 'text', text: 'x' }] } }, { op: 'replace', startSeq: 2, endSeq: 3 })
 const tail3 = JSON.parse((await req(`/c/${id}/tail?since=${tail2.cursor}`, { headers: { cookie } })).text)
 console.log('21 tail rewrite ->', tail3.mode)
+
+
+// --- ask_user_question ---
+// A blocking question only reaches the kindle page when it polled recently;
+// the answer posts back to /c/:id/answer and releases the waiting tool.
+await req('/c/' + id, { headers: { cookie } })
+const askListener = listeners.find((entry) => entry.name === 'user-questions/request')
+const askRequest = (questions, signal) => askListener.listener({ questions, agent: { id }, signal }, () => {
+  throw new Error('the kindle page never polled')
+})
+const ac1 = new AbortController()
+const ask1 = askRequest([{ id: 'q1', question: '选哪个？', options: [{ label: '甲' }, { label: '乙' }] }], ac1.signal)
+const askPage = await req('/c/' + id, { headers: { cookie } })
+console.log('41 ask page ->', 'form', askPage.text.includes('class="ask"'), 'options', askPage.text.includes('name="p0" value="1"'),
+  'composer hidden', askPage.text.includes('id="typebox" style="display:none"'), 'state', askPage.text.includes('等你回答 · AI 暂停中'))
+
+const tailAsk = JSON.parse((await req('/c/' + id + '/tail?since=0', { headers: { cookie } })).text)
+const askToken = tailAsk.ask && tailAsk.ask.id
+console.log('42 ask tail ->', Boolean(askToken), 'html', Boolean(tailAsk.ask && tailAsk.ask.html.includes('甲')))
+
+const answered = await req('/c/' + id + '/answer', {
+  method: 'POST',
+  headers: { cookie, 'content-type': 'application/x-www-form-urlencoded' },
+  body: 't=' + askToken + '&n=6&p0=1&c0=',
+})
+const askResult = await ask1
+const afterAsk = (await req(answered.headers.get('location'), { headers: { cookie } })).text
+console.log('43 answer ->', answered.status, answered.headers.get('location'), 'answers', JSON.stringify(askResult.answers),
+  'form gone', !afterAsk.includes('class="ask"'), 'notice', afterAsk.includes('已提交回答'))
+
+const stale = await req('/c/' + id + '/answer', {
+  method: 'POST',
+  headers: { cookie, 'content-type': 'application/x-www-form-urlencoded' },
+  body: 't=' + askToken + '&n=6&p0=0',
+})
+console.log('44 stale answer ->', stale.headers.get('location'))
+
+// skip leaves every question empty; abort frees the tool when the turn dies.
+const ask2 = askRequest([{ id: 'q1', question: '继续吗？', options: [{ label: '是' }] }], new AbortController().signal)
+const token2 = JSON.parse((await req('/c/' + id + '/tail?since=0', { headers: { cookie } })).text).ask.id
+await req('/c/' + id + '/answer', {
+  method: 'POST',
+  headers: { cookie, 'content-type': 'application/x-www-form-urlencoded' },
+  body: 't=' + token2 + '&n=6&skip=1',
+})
+console.log('45 skip ->', JSON.stringify((await ask2).answers))
+
+const ac3 = new AbortController()
+const ask3 = askRequest([{ id: 'q1', question: '还在吗？' }], ac3.signal)
+ac3.abort()
+const aborted = await ask3.then(() => 'resolved', (error) => error.message)
+console.log('46 abort ->', aborted)
 
 const renamePage = await req(`/c/${id}/rename`, { headers: { cookie } })
 console.log('13 rename page ->', renamePage.status, renamePage.text.includes('name="title"'))

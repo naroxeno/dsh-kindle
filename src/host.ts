@@ -294,8 +294,41 @@ export interface KindleServices {
   accountController: AccountControllerLike | null
 }
 
+export interface UserQuestionOption {
+  label: string
+  description?: string
+}
+
+export interface UserQuestion {
+  id: string
+  question: string
+  header?: string
+  detail?: string
+  options?: UserQuestionOption[]
+  multiSelect?: boolean
+}
+
+export interface UserQuestionAnswerItem {
+  id: string
+  selected: string[]
+  custom?: string
+}
+
+export interface UserQuestionRequest {
+  questions: UserQuestion[]
+  agent?: { id?: unknown }
+  signal?: AbortSignal
+  wait?: { callId?: unknown; timed?: boolean }
+}
+
 export interface KindleContext {
   sessionController: SessionControllerLike
+  /** Root-scoped listener for the scoped `user-questions/request` waterfall; absent in tests. */
+  on?(
+    name: string,
+    listener: (request: unknown, next: () => unknown) => unknown,
+    options?: { prepend?: boolean },
+  ): (() => void) | void
 }
 
 export interface KindleHost {

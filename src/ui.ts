@@ -3,7 +3,7 @@ const { escapeHtml, texToSvg, convertPromptMath } = await import('./math.js' + S
 const { renderMarkdown, renderMarkdownDoc, inline } = await import('./markdown.js' + STAMP)
 const { priceWindow } = await import('./account.js' + STAMP)
 
-import type { KindleConfig } from './host.js'
+import type { KindleConfig, UserQuestion, UserQuestionOption } from './host.js'
 
 export interface UiMessage {
   kind: 'user' | 'assistant' | 'tool'
@@ -77,6 +77,17 @@ export interface SessionView {
   version?: string
   /** Reasoning-effort choices for the composer at the bottom. */
   model?: UiModelChoice | null
+  /** Pending ask_user_question; replaces the composer while it is set. */
+  ask?: AskView | null
+  /** One-line feedback after answering or when the question expired. */
+  askNotice?: string
+}
+
+export interface AskView {
+  token: string
+  sessionId: string
+  window?: number
+  questions: UserQuestion[]
 }
 
 export type FileKind = 'md' | 'text' | 'image' | 'other'
@@ -339,6 +350,18 @@ figure.fig figcaption{margin-top:10px;font-size:0.74em;color:#444}
 .matherr{font-family:monospace;font-size:0.72em;background:#f4f4f4;border:2px dotted #888;padding:4px 8px;word-wrap:break-word}
 
 .composer{margin-top:40px;padding:0 24px 8px;border-top:3px solid #000}
+.ask .aq{padding:0 0 18px}
+.ask .aq+.aq{margin-top:6px;padding-top:22px;border-top:2px solid #e2e2e2}
+.ask .ah{margin:0 0 8px;font-size:0.78em;letter-spacing:0.1em;color:#555}
+.ask .at{margin:0 0 10px;font-size:1em;font-weight:bold;line-height:1.5}
+.ask .ad{margin:0 0 8px;font-size:0.84em;line-height:1.6;color:#333;white-space:pre-wrap;word-wrap:break-word}
+.ask .opt{display:block;padding:20px 0;border-bottom:1px solid #e2e2e2}
+.ask .opt input{float:left;width:36px;height:36px;margin:2px 16px 0 0}
+.ask .ol{display:block;margin-left:56px;font-size:0.92em;line-height:1.5}
+.ask .od{display:block;margin-top:6px;font-size:0.86em;color:#555;line-height:1.55}
+.ask .lbl{margin:20px 0 10px}
+.ask input.flat{height:76px;font-size:0.9em}
+.ask .hint{margin-top:18px}
 .palette{width:100%;border-collapse:separate;border-spacing:0;table-layout:fixed}
 .palette td{padding:5px}
 .palette button{display:block;width:100%;height:92px;padding:0;border:2px solid #000;background:#fff;color:#000;font-size:0.86em;line-height:1.15}
@@ -415,6 +438,75 @@ function ins(s){
 }
 function doPreview(){document.getElementById('preview-msg').value=ta.value;document.getElementById('preview-form').submit();return false;}
 ${extra}`
+}
+
+function askOption(
+  option: UserQuestionOption,
+  question: number,
+  at: number,
+  type: 'radio' | 'checkbox',
+): string {
+  const description = option.description
+    ? '<span class="od">' + escapeHtml(option.description) + '</span>'
+    : ''
+  return (
+    '<label class="opt"><input type="' +
+    type +
+    '" name="p' +
+    question +
+    '" value="' +
+    at +
+    '"><span class="ol">' +
+    escapeHtml(option.label) +
+    description +
+    '</span></label>'
+  )
+}
+
+export function renderAsk(config: KindleConfig, view: AskView): string {
+  const id = escapeHtml(view.sessionId)
+  const token = escapeHtml(view.token)
+  const window = String(Number(view.window) || 0)
+  const multi = view.questions.some((question) => question.multiSelect)
+  const items = view.questions
+    .map((question, index) => {
+      const header = question.header
+        ? '<div class="ah">' + escapeHtml(question.header) + '</div>'
+        : ''
+      const detail = question.detail ? '<p class="ad">' + escapeHtml(question.detail) + '</p>' : ''
+      const type = question.multiSelect ? 'checkbox' : 'radio'
+      const options = (question.options || [])
+        .map((option, at) => askOption(option, index, at, type))
+        .join('')
+      const label = options ? '其他答案（可选）' : '答案'
+      return (
+        '<div class="aq">' +
+        header +
+        '<div class="at">' +
+        escapeHtml(question.question) +
+        '</div>' +
+        detail +
+        options +
+        '<div class="lbl">' +
+        label +
+        '</div><input type="text" class="flat" name="c' +
+        index +
+        '" autocomplete="off"></div>'
+      )
+    })
+    .join('')
+  const hint = (multi ? '多选题可以点多项。' : '') + '不选、不填就点「跳过」。'
+  return `<form class="ask" method="post" action="/c/${id}/answer">
+  <input type="hidden" name="t" value="${token}">
+  <input type="hidden" name="n" value="${window}">
+  <div class="sect">AI 在等你回答</div>
+  ${items}
+  <p class="hint">${hint}</p>
+  <div class="stack">
+    <button type="submit" class="btn primary">回答</button>
+    <button type="submit" class="btn" name="skip" value="1">跳过</button>
+  </div>
+</form>`
 }
 
 export function renderLogin(
@@ -938,6 +1030,9 @@ export function renderSession(config: KindleConfig, view: SessionView): string {
       '">↑ 更早的消息</a>'
     : ''
   const stop = view.running ? '' : ' style="display:none"'
+  const ask = view.ask || null
+  const stateText = ask ? '等你回答 · AI 暂停中' : view.running ? '生成中 · 新内容自动追加' : ''
+  const stateStyle = view.running || ask ? '' : ' style="display:none"'
 
   const body = `
 ${toolBar(`<a href="/s">‹ 列表</a>`, `<a href="/c/${id}?n=${view.window}">刷新</a>`)}
@@ -948,7 +1043,7 @@ ${pageHead(view.title || '会话', formatTime(view.updatedAt) ? `更新于 ${for
   <td><a class="cell" href="/c/${id}/rename">改名</a></td>
   <td><a class="cell" href="/c/${id}/delete">删除</a></td>
 </tr></table>
-<div class="st" id="state"${view.running ? '' : ' style="display:none"'}>${view.running ? '生成中 · 新内容自动追加' : ''}</div>
+<div class="st" id="state"${stateStyle}>${stateText}</div>
 <form id="stopbtn" method="post" action="/c/${id}/stop"${stop}><button type="submit" class="stbtn">■ 停止生成</button></form>
 ${older}
 <div id="msgs">${renderMessages(
@@ -961,6 +1056,9 @@ ${older}
     },
   )}</div>
 <div class="composer" id="composer">
+  ${view.askNotice ? `<p class="hint">${escapeHtml(view.askNotice)}</p>` : ''}
+  <div id="askbox" data-ask="${ask ? escapeHtml(ask.token) : ''}">${ask ? renderAsk(config, ask) : ''}</div>
+  <div id="typebox"${ask ? ' style="display:none"' : ''}>
   <div class="sect">输入</div>
   <p class="hint">公式用 $…$ 包起来，用 AsciiMath 语法（例：$sqrt(x^2+y^2)$、$int_0^1 f(x) dx$）。</p>
   <form method="post" action="/c/${id}/send">
@@ -976,6 +1074,7 @@ ${older}
   <form id="preview-form" method="post" action="/c/${id}/preview" style="display:none">
     <input type="hidden" name="msg" id="preview-msg">
   </form>
+  </div>
 </div>
 <script>${composerScript(runTail(view.sessionId, view.cursor, view.running, Boolean(view.fresh), Boolean(view.fresh), view.window))}</script>`
 
@@ -1002,11 +1101,24 @@ function runTail(
 (function(){
   var id=${id},cursor=${start},running=${isRunning},idle=0,jump=${jump ? 'true' : 'false'},fresh=${fresh ? 'true' : 'false'},n=${size};
   function byId(n){return document.getElementById(n);}
+  var askBox=byId('askbox');
+  var askId=(askBox&&askBox.getAttribute)?(askBox.getAttribute('data-ask')||''):'';
   function setState(text){
     var s=byId('state');
     if(!s)return;
     s.innerHTML=text;
     s.style.display=text?'block':'none';
+  }
+  function applyAsk(a){
+    var next=(a&&a.id)?a.id:'';
+    if(next===askId)return;
+    askId=next;
+    var box=byId('askbox'),tb=byId('typebox');
+    if(box){
+      box.innerHTML=(a&&a.html)?a.html:'';
+      if(box.setAttribute){box.setAttribute('data-ask',next);}
+    }
+    if(tb){tb.style.display=next?'none':'';}
   }
   function pageHeight(){
     return document.documentElement.scrollHeight||document.body.scrollHeight||0;
@@ -1038,9 +1150,11 @@ function runTail(
       var d=null;
       try{d=JSON.parse(x.responseText);}catch(e){setTimeout(tick,6000);return;}
       var shown=apply(d);
+      applyAsk(d.ask||null);
       if(shown){cursor=d.cursor;}
       running=d.running===1;
-      setState(running?'生成中 · 新内容自动追加':'');
+      if(d.ask){setState('等你回答 · AI 暂停中');}
+      else{setState(running?'生成中 · 新内容自动追加':'');}
       var btn=byId('stopbtn');
       if(btn){btn.style.display=running?'':'none';}
       if(running){idle=0;setTimeout(tick,3000);return;}

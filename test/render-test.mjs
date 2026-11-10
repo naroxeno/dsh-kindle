@@ -149,6 +149,44 @@ const settingsPin = renderFilesPin(cfg, { next: '/settings?hidden=1', scope: 'se
 assert.ok(settingsPin.includes('隐藏工作区'), 'pin page knows its scope')
 assert.ok(settingsPin.includes('value="/settings?hidden=1"'), 'pin keeps next')
 
+
+// While ask_user_question blocks, the composer becomes an option list plus one
+// flat input; the poll must swap it in place instead of clearing selections.
+const askPage = renderSession(cfg, {
+  ...base,
+  ask: {
+    token: 'tok1',
+    sessionId: 'sess-1',
+    window: 6,
+    questions: [
+      {
+        id: 'q1',
+        header: '确认',
+        question: '选哪种颜色？',
+        detail: '细节说明',
+        options: [
+          { label: '黑色', description: '默认看板色' },
+          { label: '白色' },
+        ],
+      },
+      { id: 'q2', question: '还要 <b> 别的吗？', multiSelect: true, options: [{ label: '加粗' }] },
+    ],
+  },
+})
+assert.ok(askPage.includes('等你回答 · AI 暂停中'), 'ask state is shown')
+assert.ok(askPage.includes('id="typebox" style="display:none"'), 'textarea hidden behind the ask')
+assert.ok(askPage.includes('name="p0" value="0"'), 'option radio')
+assert.ok(askPage.includes('type="checkbox" name="p1"'), 'multi select checkbox')
+assert.ok(askPage.includes('class="flat" name="c0"'), 'one flat input per question')
+assert.ok(askPage.includes('name="skip" value="1"'), 'skip submits')
+assert.ok(askPage.includes('data-ask="tok1"'), 'askbox remembers the token')
+assert.ok(askPage.includes('action="/c/sess-1/answer"'), 'answers post to the session')
+assert.ok(askPage.includes('&lt;b&gt;'), 'question text is escaped')
+assert.ok(runningPage.includes('id="typebox">'), 'no ask keeps the composer')
+assert.ok(!runningPage.includes('data-ask="tok'), 'no ask leaves the box empty')
+assert.ok(askPage.includes('applyAsk'), 'tail script swaps the ask card')
+assert.ok(askPage.includes("'等你回答 · AI 暂停中'"), 'tail script repeats the ask state')
+
 // A published package must not disagree with the version it reports at runtime.
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
 console.log('version match:', VERSION === pkg.version, `(${VERSION} vs ${pkg.version})`)
