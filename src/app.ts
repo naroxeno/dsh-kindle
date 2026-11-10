@@ -1245,7 +1245,9 @@ async function createFilesAccess(
       if (dot <= 0) return false
       const exp = Number(raw.slice(0, dot))
       if (!Number.isFinite(exp) || exp <= Date.now()) return false
-      const want = createHmac('sha256', key).update('files:' + exp).digest()
+      const want = createHmac('sha256', key)
+        .update('files:' + exp)
+        .digest()
       const got = Buffer.from(raw.slice(dot + 1), 'base64url')
       return got.length === want.length && timingSafeEqual(got, want)
     },
@@ -1284,11 +1286,20 @@ async function createFilesAccess(
       }
       failures.delete(clientKey(req))
       const exp = Date.now() + ttl * 1000
-      const sig = createHmac('sha256', key).update('files:' + exp).digest('base64url')
+      const sig = createHmac('sha256', key)
+        .update('files:' + exp)
+        .digest('base64url')
       res.writeHead(303, {
         location: next,
         'set-cookie':
-          FILES_COOKIE + '=' + exp + '.' + sig + '; Path=/; Max-Age=' + ttl + '; HttpOnly; SameSite=Lax',
+          FILES_COOKIE +
+          '=' +
+          exp +
+          '.' +
+          sig +
+          '; Path=/; Max-Age=' +
+          ttl +
+          '; HttpOnly; SameSite=Lax',
       })
       res.end()
     },
@@ -1343,7 +1354,11 @@ function parsePin(text: string): PinHash {
 
 function verifyPin(pin: string, stored: PinHash): boolean {
   try {
-    const digest = scryptSync(pin, stored.salt, stored.digest.length, { N: stored.cost, r: 8, p: 1 })
+    const digest = scryptSync(pin, stored.salt, stored.digest.length, {
+      N: stored.cost,
+      r: 8,
+      p: 1,
+    })
     return timingSafeEqual(digest, stored.digest)
   } catch {
     return false

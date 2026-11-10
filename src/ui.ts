@@ -879,7 +879,7 @@ export function renderSession(config: KindleConfig, view: SessionView): string {
   const stop = view.running ? '' : ' style="display:none"'
 
   const body = `
-${toolBar(`<a href="/s">‹ 列表</a>`, `<a href="/c/${id}">刷新</a>`)}
+${toolBar(`<a href="/s">‹ 列表</a>`, `<a href="/c/${id}?n=${view.window}">刷新</a>`)}
 ${pageHead(view.title || '会话', formatTime(view.updatedAt) ? `更新于 ${formatTime(view.updatedAt)}` : '')}
 <table class="strip"><tr>
   <td><a class="cell" href="/files?s=${escapeHtml(view.sessionId)}">文件</a></td>
@@ -916,7 +916,7 @@ ${older}
     <input type="hidden" name="msg" id="preview-msg">
   </form>
 </div>
-<script>${composerScript(runTail(view.sessionId, view.cursor, view.running, Boolean(view.fresh || view.running), Boolean(view.fresh)))}</script>`
+<script>${composerScript(runTail(view.sessionId, view.cursor, view.running, Boolean(view.fresh), Boolean(view.fresh), view.window))}</script>`
 
   return shell(view.title || '会话', body, {
     fontSize: config.fontSize,
@@ -931,13 +931,15 @@ function runTail(
   running?: boolean,
   jump?: boolean,
   fresh?: boolean,
+  windowSize?: number,
 ): string {
   const id = JSON.stringify(String(sessionId))
   const start = JSON.stringify(Number(cursor) || 0)
+  const size = JSON.stringify(Number(windowSize) || 0)
   const isRunning = running ? 'true' : 'false'
   return `
 (function(){
-  var id=${id},cursor=${start},running=${isRunning},idle=0,jump=${jump ? 'true' : 'false'},fresh=${fresh ? 'true' : 'false'};
+  var id=${id},cursor=${start},running=${isRunning},idle=0,jump=${jump ? 'true' : 'false'},fresh=${fresh ? 'true' : 'false'},n=${size};
   function byId(n){return document.getElementById(n);}
   function setState(text){
     var s=byId('state');
@@ -954,31 +956,34 @@ function runTail(
   }
   function apply(d){
     var box=byId('msgs');
-    if(!box)return;
+    if(!box)return false;
     var stick=atBottom();
+    if(d.mode==='replace'&&!stick)return false;
     if(d.mode==='replace'){box.innerHTML=d.html;}
     else if(d.html){
       if(box.insertAdjacentHTML){box.insertAdjacentHTML('beforeend',d.html);}
       else{box.innerHTML+=d.html;}
     }
     if(stick){window.scrollTo(0,pageHeight());}
+    return true;
   }
   if(jump){window.scrollTo(0,pageHeight());}
   function tick(){
     var x=new XMLHttpRequest();
-    x.open('GET','/c/'+encodeURIComponent(id)+'/tail?since='+cursor,true);
+    x.open('GET','/c/'+encodeURIComponent(id)+'/tail?since='+cursor+'&n='+n,true);
     x.onreadystatechange=function(){
       if(x.readyState!==4)return;
       if(x.status!==200){setTimeout(tick,6000);return;}
       var d=null;
-      try{d=JSON.parse(x.responseText);}catch(e){location.reload();return;}
-      apply(d);
-      cursor=d.cursor;
+      try{d=JSON.parse(x.responseText);}catch(e){setTimeout(tick,6000);return;}
+      var shown=apply(d);
+      if(shown){cursor=d.cursor;}
       running=d.running===1;
       setState(running?'生成中 · 新内容自动追加':'');
       var btn=byId('stopbtn');
       if(btn){btn.style.display=running?'':'none';}
       if(running){idle=0;setTimeout(tick,3000);return;}
+      if(!shown){setTimeout(tick,15000);return;}
       idle++;
       if(idle<25){setTimeout(tick,(fresh&&idle<=12)?4000:15000);}
     };

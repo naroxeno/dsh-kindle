@@ -3,6 +3,7 @@ import { renderSession, renderList, renderPreview } from '../lib/ui.js'
 import { convertPromptMath, texToSvg } from '../lib/math.js'
 import { VERSION } from '../lib/index.js'
 import { readFileSync } from 'node:fs'
+import assert from 'node:assert/strict'
 
 const t0 = Date.now()
 const cfg = { fontSize: 30, pageSize: 6 }
@@ -69,6 +70,23 @@ console.log('merror leaked:', /merror/.test(page))
 const m = page.match(/<svg[^>]*>/)
 console.log('first svg tag:', m && m[0].slice(0, 200))
 console.log('prompt conv:', convertPromptMath('求 $sum_(i=1)^n i$ 的值'))
+
+// A running turn alone must not drag the page to the newest message: only a
+// fresh send does. The window size has to survive both the refresh link and
+// the tail poll, or reading an older window collapses back to six messages.
+const base = {
+  sessionId: 'sess-1',
+  title: '测试会话',
+  messages: [{ kind: 'user', text: 'hi' }],
+  running: true,
+  window: 6,
+}
+const runningPage = renderSession(cfg, base)
+const freshPage = renderSession(cfg, { ...base, fresh: true })
+assert.ok(runningPage.includes('jump=false'), 'running page must not jump')
+assert.ok(freshPage.includes('jump=true'), 'fresh page must jump')
+assert.ok(runningPage.includes('href="/c/sess-1?n=6"'), 'refresh keeps the window')
+assert.ok(runningPage.includes("'&n='+n"), 'tail keeps the window')
 
 // A published package must not disagree with the version it reports at runtime.
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
