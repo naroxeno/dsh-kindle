@@ -499,18 +499,27 @@ export function renderList(
   const dayStart = new Date()
   dayStart.setHours(0, 0, 0, 0)
   const dayMs = dayStart.getTime()
-  const recent: ListItem[] = []
-  const older: ListItem[] = []
+  const weekStart = new Date(
+    dayStart.getFullYear(),
+    dayStart.getMonth(),
+    dayStart.getDate() - ((dayStart.getDay() + 6) % 7),
+  )
+  const monthStart = new Date(dayStart.getFullYear(), dayStart.getMonth(), 1)
+  const weekMs = weekStart.getTime()
+  const monthMs = monthStart.getTime()
+  const buckets: ListItem[][] = [[], [], [], []]
   for (const s of sessions) {
-    if ((Number(s.updatedAt) || 0) >= dayMs) recent.push(s)
-    else older.push(s)
+    const t = Number(s.updatedAt) || 0
+    buckets[t >= dayMs ? 0 : t >= weekMs ? 1 : t >= monthMs ? 2 : 3].push(s)
   }
+  const labels = ['今天', '本周', '本月', '更早']
   const section = (label: string, items: ListItem[]): string =>
     '<div class="grp">' + label + '</div>' + items.map(rowHtml).join('')
+  const groups = buckets.map((items, i) => (items.length ? section(labels[i], items) : '')).join('')
 
   const rows = sessions.length
-    ? recent.length > 0 && older.length > 0
-      ? section('今天', recent) + section('更早', older)
+    ? buckets.filter((items) => items.length > 0).length > 1
+      ? groups
       : sessions.map(rowHtml).join('')
     : extras.query
       ? '<div class="empty"><p class="t">没有匹配的会话</p><p class="hint">换个词，或者清掉搜索。</p></div>'

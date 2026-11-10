@@ -105,7 +105,7 @@ const mixed = renderList(
   cfg,
   [
     { sessionId: 'a', title: '今天的', updatedAt: now },
-    { sessionId: 'b', title: '旧的', updatedAt: now - 3 * 86400000 },
+    { sessionId: 'b', title: '旧的', updatedAt: now - 40 * 86400000 },
   ],
   undefined,
   { total: 2 },
