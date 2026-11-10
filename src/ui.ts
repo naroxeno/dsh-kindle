@@ -223,8 +223,8 @@ h1,h2,h3,h4{font-weight:bold;margin:0}
 .bc{padding:16px 24px;border-bottom:2px solid #ddd;background:#f1f1f1;font-size:0.86em;color:#555;line-height:1.5}
 .bc a{text-decoration:underline}
 .plain{margin:0;white-space:pre-wrap;word-wrap:break-word;font-size:0.94em;line-height:1.55}
-.flag{display:inline-block;border:2px solid #000;background:#000;color:#fff;padding:1px 10px;font-size:1em;line-height:1.35}
-.flag.off{background:#fff;color:#000}
+.flag{display:inline-block;border:0;background:none;color:#000;padding:0;font-size:1em;line-height:1.35}
+.flag.off{color:#666}
 
 .strip{width:100%;border-collapse:collapse;table-layout:fixed;border-bottom:2px solid #ddd}
 .strip td{padding:0;border-left:2px solid #ddd}
@@ -244,10 +244,11 @@ h1,h2,h3,h4{font-weight:bold;margin:0}
 .sb{padding:0 24px 16px}
 .sbar{width:100%;border-collapse:collapse;table-layout:fixed}
 .sbar td{padding:0;vertical-align:middle}
-.sbar td.b{width:180px;padding-left:12px}
+.sbar td.b{width:120px;padding-left:12px}
+.sbar td.n{width:176px;padding-left:12px}
 .sbar input{height:92px;font-size:0.92em}
-.sgo{display:block;width:100%;height:92px;line-height:86px;margin:0;padding:0;border:3px solid #000;background:#000;color:#fff;font:inherit;font-size:0.88em}
-.sgo:active{background:#333}
+.sgo{display:block;width:100%;height:92px;line-height:86px;margin:0;padding:0;border:3px solid #000;background:#fff;color:#000;font:inherit;font-size:0.88em}
+.sgo:active{background:#dcdcdc}
 .hits{margin:14px 0 0;font-size:0.82em;color:#555}
 .hits a{text-decoration:underline}
 .alert.err{background:#fff;color:#000;border:3px solid #000}
@@ -335,7 +336,7 @@ figure.fig figcaption{margin-top:10px;font-size:0.74em;color:#444}
 .palette button{display:block;width:100%;height:92px;padding:0;border:2px solid #000;background:#fff;color:#000;font-size:0.86em;line-height:1.15}
 .palette button:active{background:#e8e8e8}
 
-.newbtn{display:block;height:96px;line-height:90px;margin:20px 0 8px;border:3px solid #000;background:#000;color:#fff;text-align:center;text-decoration:none;font-size:1em}
+.newbtn{display:block;height:92px;line-height:86px;margin:0;border:3px solid #000;background:#000;color:#fff;text-align:center;text-decoration:none;font-size:0.88em}
 .newbtn:active{background:#333}
 .stbtn{display:block;width:100%;height:84px;padding:0;border:0;border-bottom:2px solid #000;background:#f1f1f1;color:#000;text-align:center;font:inherit;font-size:0.86em}
 .stbtn:active{background:#d0d0d0}
@@ -479,8 +480,8 @@ export function renderList(
         .map((s) => {
           const id = escapeHtml(s.sessionId)
           const flags = [
-            s.running ? '<span class="flag">生成中</span>' : '',
-            s.blank ? '<span class="flag off">空会话</span>' : '',
+            s.running ? '<span class="flag">● 生成中</span>' : '',
+            s.blank ? '<span class="flag off">● 空会话</span>' : '',
           ]
             .filter(Boolean)
             .join(' ')
@@ -515,7 +516,7 @@ export function renderList(
 ${toolBar('<span class="brand">DSH · Kindle</span>', `${balance}<a href="/settings">设置</a><a href="/s">刷新</a>`)}
 ${pageHead('会话', sub)}
 ${notice ? `<div class="alert">${escapeHtml(notice)}</div>` : ''}
-<div class="sb"><form method="post" action="/s"><table class="sbar"><tr><td class="f"><input type="text" name="q" value="${escapeHtml(query)}" placeholder="搜索标题" autocomplete="off"></td><td class="b"><button type="submit" class="sgo">搜索</button></td></tr></table></form>${hits}<a class="newbtn" href="/new">＋ 新会话</a></div>
+<div class="sb"><form method="post" action="/s"><table class="sbar"><tr><td class="f"><input type="text" name="q" value="${escapeHtml(query)}" placeholder="搜索标题" autocomplete="off"></td><td class="b"><button type="submit" class="sgo">搜索</button></td><td class="n"><a class="newbtn" href="/new">＋ 新会话</a></td></tr></table></form>${hits}</div>
 </div>
 <div id="scroll">${rows}</div>`
   return shell('DSH Kindle', body, { fontSize: config.fontSize, indent: config.indent })
