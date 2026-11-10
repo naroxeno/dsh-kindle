@@ -107,6 +107,7 @@ export interface FilesPinView {
   error?: string
   wait?: number
   missing?: boolean
+  scope?: 'files' | 'settings'
 }
 
 export interface TextView {
@@ -240,6 +241,12 @@ h1,h2,h3,h4{font-weight:bold;margin:0}
 .mode .d{display:block;margin-top:10px;font-size:0.8em;line-height:1.5;color:#444;word-wrap:break-word}
 .mode .badge{font-size:0.72em;font-weight:normal;color:#555;border:1px solid #999;padding:1px 6px;margin-left:8px}
 .mode[disabled]{opacity:0.45}
+.wrow{width:100%;border-collapse:collapse;margin:0 0 18px}
+.wrow td{padding:0;vertical-align:middle}
+.wrow td.h{width:150px;padding-left:12px}
+.wrow .mode{margin:0}
+.hbtn{display:block;width:100%;height:104px;line-height:98px;padding:0;border:3px solid #000;background:#fff;color:#000;font:inherit;font-size:0.82em}
+.hbtn:active{background:#dcdcdc}
 
 .lbl{margin:0 0 10px;font-size:0.82em;letter-spacing:0.06em;color:#555}
 .sb{padding:0 24px 16px}
@@ -434,8 +441,10 @@ ${failed ? '<div class="alert">令牌不对，再试一次。</div>' : ''}
 }
 
 export function renderFilesPin(config: KindleConfig, view: FilesPinView = {}): string {
+  const settingsScope = view.scope === 'settings'
+  const title = settingsScope ? '隐藏工作区' : '文件密码'
   const message = view.missing
-    ? '文件密码还没有设置，先让管理员配置 .kindle-files-pin。'
+    ? (settingsScope ? '密码' : '文件密码') + '还没有设置，先让管理员配置 .kindle-files-pin。'
     : view.wait
       ? '尝试次数太多，请 ' + view.wait + ' 秒后再试。'
       : view.error || ''
@@ -445,17 +454,17 @@ export function renderFilesPin(config: KindleConfig, view: FilesPinView = {}): s
   <input type="hidden" name="next" value="${escapeHtml(view.next || '/files')}">
   <div class="lbl">密码</div>
   <input class="pin" type="text" name="pin" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off">
-  <p class="hint">六位数字。文件列表、正文和图片都走这一道；解锁后 1 小时有效，过期重新输入。</p>
+  <p class="hint">六位数字。${settingsScope ? '隐藏的工作区也走这一道' : '文件列表、正文和图片都走这一道'}；解锁后 1 小时有效，过期重新输入。</p>
   <div class="stack"><button type="submit" class="btn primary">解锁</button></div>
 </form>`
   const body = `
 ${toolBar('<a href="/s">‹ 会话</a>', '')}
-${pageHead('文件密码', view.missing ? '' : '6 位数字，1 小时内有效')}
+${pageHead(title, view.missing ? '' : '6 位数字，1 小时内有效')}
 <div class="pad">
 ${message ? '<div class="alert err">' + escapeHtml(message) + '</div>' : ''}
 ${form}
 </div>`
-  return shell('文件密码', body, { fontSize: config.fontSize, indent: config.indent })
+  return shell(title, body, { fontSize: config.fontSize, indent: config.indent })
 }
 
 export function renderError(config: KindleConfig, status: number, message: string): string {
@@ -709,6 +718,7 @@ export interface SettingsChoice {
   path: string
   title: string
   current?: boolean
+  hidden?: boolean
 }
 
 export interface SettingsView {
@@ -718,6 +728,8 @@ export interface SettingsView {
   registryReady: boolean
   choices: SettingsChoice[]
   query?: string
+  reveal?: boolean
+  hiddenCount?: number
   ungrouped: number
   indent?: boolean
   indentArt?: boolean
@@ -740,23 +752,46 @@ export function renderSettings(config: KindleConfig, view: SettingsView): string
     : ''
   const search =
     view.choices.length >= 6 || query
-      ? '<div class="sb"><form method="post" action="/settings"><input type="hidden" name="action" value="filter"><table class="sbar"><tr><td class="f"><input type="text" name="q" value="' +
+      ? '<div class="sb"><form method="post" action="/settings"><input type="hidden" name="action" value="filter">' +
+        (view.reveal ? '<input type="hidden" name="view" value="hidden">' : '') +
+        '<table class="sbar"><tr><td class="f"><input type="text" name="q" value="' +
         escapeHtml(query) +
         '" placeholder="筛选工作区" autocomplete="off"></td><td class="b"><button type="submit" class="sgo">筛选</button></td></tr></table></form>' +
         hits +
         '</div>'
       : ''
 
-  const choices = view.choices.length
-    ? view.choices
-        .map(
-          (choice) =>
-            `<form method="post" action="/settings"><input type="hidden" name="action" value="save"><input type="hidden" name="path" value="${escapeHtml(choice.path)}"><button type="submit" class="mode${choice.current ? ' on' : ''}"><span class="n">${escapeHtml(choice.title)}${choice.current ? '<span class="badge">当前</span>' : ''}</span><span class="d">${escapeHtml(choice.path)}</span></button></form>`,
-        )
-        .join('')
+  const choiceRow = (choice: SettingsChoice): string => {
+    const carry = view.reveal ? '<input type="hidden" name="view" value="hidden">' : ''
+    const card = `<button type="submit" name="action" value="save" class="mode${choice.current ? ' on' : ''}"><span class="n">${escapeHtml(choice.title)}${choice.current ? '<span class="badge">当前</span>' : ''}</span><span class="d">${escapeHtml(choice.path)}</span></button>`
+    const toggle = choice.current
+      ? ''
+      : `<button type="submit" name="action" value="${choice.hidden ? 'unhide' : 'hide'}" class="hbtn">${choice.hidden ? '取消隐藏' : '隐藏'}</button>`
+    return `<form method="post" action="/settings"><input type="hidden" name="path" value="${escapeHtml(choice.path)}">${carry}<table class="wrow"><tr><td>${card}</td><td class="h">${toggle}</td></tr></table></form>`
+  }
+  const visible = view.choices.filter((choice) => !choice.hidden)
+  const hiddenChoices = view.choices.filter((choice) => choice.hidden)
+  const choices = visible.length
+    ? visible.map(choiceRow).join('')
     : query
       ? '<p class="hint">没有匹配的工作区，换个词或者清掉筛选。</p>'
-      : '<p class="hint">这个 Host 还没有注册过工作区。</p>'
+      : view.hiddenCount
+        ? '<p class="hint">工作区都藏起来了。</p>'
+        : '<p class="hint">这个 Host 还没有注册过工作区。</p>'
+
+  const hiddenBox = view.reveal
+    ? '<div class="sect">已隐藏</div>' +
+      (hiddenChoices.length
+        ? hiddenChoices.map(choiceRow).join('') +
+          '<p class="hint"><a href="/settings">收起这些工作区</a></p>'
+        : '<p class="hint">' +
+          (view.hiddenCount ? '筛选条件下没有隐藏的工作区。' : '没有隐藏的工作区。') +
+          ' <a href="/settings">收起</a></p>')
+    : view.hiddenCount
+      ? '<div class="sect">已隐藏</div><p class="hint">有 ' +
+        view.hiddenCount +
+        ' 个工作区藏起来了，列表里不显示。</p><a class="btn" href="/settings?hidden=1">输入密码查看</a>'
+      : ''
 
   const adopt = view.ungrouped
     ? `<form method="post" action="/settings"><input type="hidden" name="action" value="adopt"><button type="submit" class="btn">把 ${view.ungrouped} 个旧会话归组</button></form><p class="hint">只动当前目录里的会话，别的组不受影响。</p>`
@@ -791,7 +826,7 @@ ${row('file', '文章与文件', Boolean(view.indentArt))}
 <p class="hint">只作用于正文段落；标题、列表、代码、表格不受影响。</p>`
 
   const body = `
-${toolBar('<a href="/s">‹ 会话</a>', '<a href="/settings">刷新</a>')}
+${toolBar('<a href="/s">‹ 会话</a>', '<a href="/settings' + (view.reveal ? '?hidden=1' : '') + '">刷新</a>')}
 ${pageHead('设置', '默认工作区')}
 <div class="pad">
 ${notice}
@@ -803,6 +838,7 @@ ${indent}
 <div class="sect">换成已有工作区</div>
 ${search}
 ${choices}
+${hiddenBox}
 <div class="sect">其他目录</div>
 <form method="post" action="/settings">
 <input type="hidden" name="action" value="save">

@@ -196,12 +196,22 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
     }
 
     if (method === 'GET' && path === '/settings') {
+      if (url.searchParams.get('hidden') === '1' && !filesAccess.allowed(req)) {
+        const query = searchQuery(url.searchParams.get('q'))
+        const next = '/settings?hidden=1' + (query ? '&q=' + encodeURIComponent(query) : '')
+        sendHtml(res, 200, ui.renderFilesPin(config, { next, scope: 'settings' }))
+        return
+      }
       sendHtml(
         res,
         200,
         ui.renderSettings(
           config,
-          await settingsView(noticeFor(url), searchQuery(url.searchParams.get('q'))),
+          await settingsView(
+            noticeFor(url),
+            searchQuery(url.searchParams.get('q')),
+            url.searchParams.get('hidden') === '1',
+          ),
         ),
       )
       return
@@ -211,7 +221,11 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
       const body = await readBody(req)
       if (String(body.get('action') || '') === 'filter') {
         const wanted = searchQuery(body.get('q'))
-        redirect(res, wanted ? '/settings?q=' + encodeURIComponent(wanted) : '/settings')
+        const params = new URLSearchParams()
+        if (String(body.get('view') || '') === 'hidden') params.set('hidden', '1')
+        if (wanted) params.set('q', wanted)
+        const tail = params.toString()
+        redirect(res, '/settings' + (tail ? '?' + tail : ''))
         return
       }
       if (String(body.get('action') || '') === 'indent') {
@@ -263,6 +277,52 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
             ),
           )
         }
+        return
+      }
+
+      const op = String(body.get('action') || '')
+      if (op === 'hide' || op === 'unhide') {
+        const keep = String(body.get('view') || '') === 'hidden'
+        const wanted = expandHome(String(body.get('path') || '').trim())
+        if (op === 'hide' && wanted === activeCwd()) {
+          sendHtml(
+            res,
+            200,
+            ui.renderSettings(
+              config,
+              await settingsView({
+                text: '当前工作区不能隐藏，先换成别的工作区。',
+                error: true,
+              }),
+            ),
+          )
+          return
+        }
+        const hidden = new Set(settings.hidden || [])
+        if (wanted) {
+          if (op === 'hide') hidden.add(wanted)
+          else hidden.delete(wanted)
+        }
+        const nextHidden = [...hidden]
+        settings.hidden = nextHidden
+        try {
+          await saveSettings(settingsFile, settings)
+        } catch (error) {
+          sendHtml(
+            res,
+            200,
+            ui.renderSettings(
+              config,
+              await settingsView({ text: '存不了设置：' + errorText(error), error: true }),
+            ),
+          )
+          return
+        }
+        const stay = keep && nextHidden.length
+        redirect(
+          res,
+          (stay ? '/settings?hidden=1&ok=' : '/settings?ok=') + (op === 'hide' ? 'hide' : 'unhide'),
+        )
         return
       }
 
@@ -900,31 +960,42 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
     return basename(path) || path
   }
 
-  async function settingsView(notice?: SettingsNotice, query?: string): Promise<SettingsView> {
+  async function settingsView(
+    notice?: SettingsNotice,
+    query?: string,
+    reveal = false,
+  ): Promise<SettingsView> {
     const path = activeCwd()
     const list = (await sessionsApi.listWorkspaces()) || []
     const current = list.find((entry) => entry.path === path)
     const sessions = await sessionsApi.listSessions(ctx, path)
     const member = new Set(current ? current.sessionIds : [])
     const needle = (query || '').toLowerCase()
-    const shown = needle
-      ? list.filter(
-          (entry) =>
-            (entry.title || '').toLowerCase().includes(needle) ||
-            entry.path.toLowerCase().includes(needle),
-        )
-      : list
+    const hidden = new Set(settings.hidden || [])
+    const hiddenCount = list.filter((entry) => hidden.has(entry.path)).length
+    const shown = (
+      needle
+        ? list.filter(
+            (entry) =>
+              (entry.title || '').toLowerCase().includes(needle) ||
+              entry.path.toLowerCase().includes(needle),
+          )
+        : list
+    ).filter((entry) => reveal || !hidden.has(entry.path))
     return {
       path,
       title: current && current.title ? current.title : basename(path) || path,
       registered: Boolean(current),
       registryReady: Boolean(services.workspaceRegistry && services.workspaceRegistry.list),
       query,
+      reveal,
+      hiddenCount,
       choices: shown.map((entry) => ({
         id: entry.id,
         path: entry.path,
         title: entry.title || basename(entry.path) || entry.path,
         current: entry.path === path,
+        hidden: hidden.has(entry.path) || undefined,
       })),
       ungrouped: sessions.filter((item) => !member.has(item.sessionId)).length,
       indent: Boolean(settings.indent),
@@ -954,6 +1025,11 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
         text: count
           ? '已把 ' + count + ' 个会话归入当前工作区。'
           : '当前工作区里没有需要归组的会话。',
+      }
+    }
+    if (ok === 'hide' || ok === 'unhide') {
+      return {
+        text: ok === 'hide' ? '已隐藏这个工作区，输密码才能再看到。' : '已取消隐藏。',
       }
     }
     return undefined
@@ -1314,7 +1390,7 @@ function clientKey(req: IncomingMessage): string {
 function safeFileNext(value: string): string {
   const text = value.slice(0, 500)
   if (text.startsWith('//')) return '/files'
-  return /^\/(?:files|f\?|t\?|i\?|img\?)/.test(text) ? text : '/files'
+  return /^\/(?:files|f\?|t\?|i\?|img\?|settings\?hidden=1)/.test(text) ? text : '/files'
 }
 
 function readForm(req: IncomingMessage, limit = 64 * 1024): Promise<URLSearchParams> {
@@ -1404,6 +1480,7 @@ interface StoredSettings {
   workspace: string
   indent?: boolean
   indentArt?: boolean
+  hidden?: string[]
 }
 
 async function loadSettings(file: string): Promise<StoredSettings> {
@@ -1412,15 +1489,21 @@ async function loadSettings(file: string): Promise<StoredSettings> {
       workspace?: unknown
       indent?: unknown
       indentArt?: unknown
+      hidden?: unknown
     } | null
     const text = value && typeof value.workspace === 'string' ? expandHome(value.workspace) : ''
+    const hidden =
+      value && Array.isArray(value.hidden)
+        ? [...new Set(value.hidden.filter((item): item is string => typeof item === 'string'))]
+        : []
     return {
       workspace: text && isAbsolute(text) ? text : '',
       indent: Boolean(value && value.indent === true),
       indentArt: !(value && value.indentArt === false),
+      hidden,
     }
   } catch (error) {
-    return { workspace: '' }
+    return { workspace: '', hidden: [] }
   }
 }
 

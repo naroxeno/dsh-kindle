@@ -426,6 +426,7 @@ writeFileSync(appendixPath, '# 附录\n')
 const textPath = join(cwd, '笔记.txt')
 writeFileSync(textPath, 'not markdown')
 
+const plainCookie = cookie
 const pinGate = await req('/files?s=' + forkId, { headers: { cookie } })
 console.log('36a file pin gate ->', pinGate.status, pinGate.text.includes('文件密码'),
   'no entries', !pinGate.text.includes('交付报告.md'))
@@ -445,6 +446,42 @@ const unlocked = await req('/files/unlock', {
 const kdf = (unlocked.headers.get('set-cookie') || '').split(';')[0]
 console.log('36c unlock ->', unlocked.status, unlocked.headers.get('location'), kdf.startsWith('kdf='))
 if (kdf) cookie = cookie + '; ' + kdf
+
+// Hidden workspaces: the settings list leaves them out until the file PIN is
+// presented, then shows them with an un-hide switch; the active one stays put.
+const secretDir = mkdtempSync(join(tmpdir(), 'kindle-ws-hidden-'))
+workspaces.set('ws-hidden', { id: 'ws-hidden', path: secretDir, title: '藏起来的', sessionIds: [] })
+const hid = await req('/settings', {
+  method: 'POST',
+  headers: form,
+  body: 'action=hide&path=' + encodeURIComponent(secretDir),
+})
+const hiddenPage = (await req('/settings?ok=hide', { headers: { cookie } })).text
+console.log('36d hide workspace ->', hid.status, hid.headers.get('location'),
+  'gone', !hiddenPage.includes('藏起来的'), 'link', hiddenPage.includes('/settings?hidden=1'))
+const pinClosed = await req('/settings?hidden=1', { headers: { cookie: plainCookie } })
+console.log('36e hidden pin gate ->', pinClosed.status, pinClosed.text.includes('隐藏工作区'),
+  'next', pinClosed.text.includes('value="/settings?hidden=1"'),
+  'sealed', !pinClosed.text.includes('藏起来的'))
+const guardHide = await req('/settings', {
+  method: 'POST',
+  headers: form,
+  body: 'action=hide&path=' + encodeURIComponent(cwd),
+})
+console.log('36f hide current guard ->', guardHide.status,
+  guardHide.text.includes('当前工作区不能隐藏'))
+const revealed = (await req('/settings?hidden=1', { headers: { cookie } })).text
+console.log('36g reveal ->', revealed.includes('藏起来的'), revealed.includes('value="unhide"'),
+  revealed.includes('已隐藏'))
+const unhid = await req('/settings', {
+  method: 'POST',
+  headers: form,
+  body: 'action=unhide&path=' + encodeURIComponent(secretDir) + '&view=hidden',
+})
+const unhidPage = (await req('/settings?ok=unhide', { headers: { cookie } })).text
+console.log('36h unhide ->', unhid.status, unhid.headers.get('location'),
+  'notice', unhidPage.includes('已取消隐藏'),
+  'back', (await req('/settings?hidden=1', { headers: { cookie } })).text.includes('没有隐藏的工作区'))
 
 const filesPage = await req('/files?s=' + forkId, { headers: { cookie } })
 checkHtmlHeaders('files page', filesPage)

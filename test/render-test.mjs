@@ -1,5 +1,5 @@
 import { renderMarkdown } from '../lib/markdown.js'
-import { renderSession, renderList, renderPreview } from '../lib/ui.js'
+import { renderSession, renderList, renderPreview, renderSettings, renderFilesPin } from '../lib/ui.js'
 import { convertPromptMath, texToSvg } from '../lib/math.js'
 import { VERSION } from '../lib/index.js'
 import { readFileSync } from 'node:fs'
@@ -112,6 +112,42 @@ const mixed = renderList(
 )
 assert.ok(mixed.includes('<div class="grp">今天</div>'), 'today group')
 assert.ok(mixed.includes('<div class="grp">更早</div>'), 'older group')
+
+// Hidden workspaces: the settings list leaves them out, the reveal entry sits
+// behind the same file PIN, and only a revealed row offers the un-hide switch.
+const settingsPage = renderSettings(cfg, {
+  path: '/w/one',
+  title: 'one',
+  registered: true,
+  registryReady: true,
+  choices: [
+    { id: 'a', path: '/w/one', title: 'one', current: true },
+    { id: 'b', path: '/w/two', title: 'two' },
+  ],
+  ungrouped: 0,
+  hiddenCount: 1,
+})
+assert.ok(settingsPage.includes('输入密码查看'), 'hidden hint links to the pin')
+assert.ok(settingsPage.includes('/settings?hidden=1'))
+assert.equal((settingsPage.match(/value="hide"/g) || []).length, 1, 'only non-current rows hide')
+const revealPage = renderSettings(cfg, {
+  path: '/w/one',
+  title: 'one',
+  registered: true,
+  registryReady: true,
+  choices: [
+    { id: 'a', path: '/w/one', title: 'one', current: true },
+    { id: 'b', path: '/w/two', title: 'two', hidden: true },
+  ],
+  ungrouped: 0,
+  reveal: true,
+  hiddenCount: 1,
+})
+assert.match(revealPage, /value="unhide"/)
+assert.ok(revealPage.includes('已隐藏'))
+const settingsPin = renderFilesPin(cfg, { next: '/settings?hidden=1', scope: 'settings' })
+assert.ok(settingsPin.includes('隐藏工作区'), 'pin page knows its scope')
+assert.ok(settingsPin.includes('value="/settings?hidden=1"'), 'pin keeps next')
 
 // A published package must not disagree with the version it reports at runtime.
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
