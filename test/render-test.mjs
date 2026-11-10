@@ -88,6 +88,19 @@ assert.ok(freshPage.includes('jump=true'), 'fresh page must jump')
 assert.ok(runningPage.includes('href="/c/sess-1?n=6"'), 'refresh keeps the window')
 assert.ok(runningPage.includes("'&n='+n"), 'tail keeps the window')
 
+// The list must read as plain text: titles in the body sans, recent times
+// relative, and state shown by a dot instead of a reversed block.
+const now = Date.now()
+const listPage = renderList(
+  cfg,
+  [{ sessionId: 'sess-1', title: '列表测试', updatedAt: now, running: true }],
+  undefined,
+  { total: 1 },
+)
+assert.ok(!/\.row \.ttl\{[^}]*serif/.test(listPage), 'list titles are not serif')
+assert.match(listPage, /今天 \d{2}:\d{2}/)
+assert.ok(listPage.includes('● 生成中'), 'running shown as a dot')
+
 // A published package must not disagree with the version it reports at runtime.
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
 console.log('version match:', VERSION === pkg.version, `(${VERSION} vs ${pkg.version})`)

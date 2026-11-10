@@ -215,7 +215,7 @@ h1,h2,h3,h4{font-weight:bold;margin:0}
 .row td{padding:14px 0;vertical-align:middle}
 .row td.t{padding-left:24px;padding-right:12px}
 .row td.g{width:64px;text-align:center;font-size:1.25em;color:#777}
-.row .ttl{font-family:serif;font-size:1em;font-weight:bold;line-height:1.32;word-wrap:break-word}
+.row .ttl{font-size:1em;font-weight:bold;line-height:1.32;word-wrap:break-word}
 .row .meta{margin:5px 0 0;font-size:0.78em;color:#555}
 .row .meta .n{margin-right:14px}
 .row:active{background:#eaeaea}
@@ -485,7 +485,7 @@ export function renderList(
           ]
             .filter(Boolean)
             .join(' ')
-          const meta = [formatTime(s.updatedAt), flags].filter(Boolean).join(' ')
+          const meta = [formatWhen(s.updatedAt), flags].filter(Boolean).join(' ')
           return (
             '<a class="row" href="/c/' +
             id +
@@ -1184,6 +1184,19 @@ function formatTime(ms?: number): string {
   const d = new Date(ms)
   const pad = (n: number) => (n < 10 ? '0' + n : String(n))
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+function formatWhen(ms?: number): string {
+  if (!ms) return ''
+  const d = new Date(ms)
+  const now = new Date()
+  const pad = (n: number) => (n < 10 ? '0' + n : String(n))
+  const hm = `${pad(d.getHours())}:${pad(d.getMinutes())}`
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+  if (ms >= today) return `今天 ${hm}`
+  if (ms >= today - 86400000) return `昨天 ${hm}`
+  const md = `${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+  return d.getFullYear() === now.getFullYear() ? `${md} ${hm}` : `${d.getFullYear()}-${md}`
 }
 
 export { texToSvg }
