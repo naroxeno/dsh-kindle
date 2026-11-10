@@ -100,6 +100,18 @@ const listPage = renderList(
 assert.ok(!/\.row \.ttl\{[^}]*serif/.test(listPage), 'list titles are not serif')
 assert.match(listPage, /今天 \d{2}:\d{2}/)
 assert.ok(listPage.includes('● 生成中'), 'running shown as a dot')
+assert.ok(!listPage.includes('class="grp"'), 'one day needs no headings')
+const mixed = renderList(
+  cfg,
+  [
+    { sessionId: 'a', title: '今天的', updatedAt: now },
+    { sessionId: 'b', title: '旧的', updatedAt: now - 3 * 86400000 },
+  ],
+  undefined,
+  { total: 2 },
+)
+assert.ok(mixed.includes('<div class="grp">今天</div>'), 'today group')
+assert.ok(mixed.includes('<div class="grp">更早</div>'), 'older group')
 
 // A published package must not disagree with the version it reports at runtime.
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))

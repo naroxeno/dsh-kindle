@@ -220,6 +220,7 @@ h1,h2,h3,h4{font-weight:bold;margin:0}
 .row .meta .n{margin-right:14px}
 .row:active{background:#eaeaea}
 .row.dim .ttl{color:#666}
+.grp{padding:16px 24px 6px;font-size:0.76em;letter-spacing:0.1em;color:#555}
 .bc{padding:16px 24px;border-bottom:2px solid #ddd;background:#f1f1f1;font-size:0.86em;color:#555;line-height:1.5}
 .bc a{text-decoration:underline}
 .plain{margin:0;white-space:pre-wrap;word-wrap:break-word;font-size:0.94em;line-height:1.55}
@@ -475,28 +476,42 @@ export function renderList(
   notice?: string,
   extras: ListExtras = {},
 ): string {
+  const rowHtml = (s: ListItem): string => {
+    const id = escapeHtml(s.sessionId)
+    const flags = [
+      s.running ? '<span class="flag">● 生成中</span>' : '',
+      s.blank ? '<span class="flag off">● 空会话</span>' : '',
+    ]
+      .filter(Boolean)
+      .join(' ')
+    const meta = [formatWhen(s.updatedAt), flags].filter(Boolean).join(' ')
+    return (
+      '<a class="row" href="/c/' +
+      id +
+      '"><table><tr><td class="t"><div class="ttl">' +
+      escapeHtml(s.title) +
+      '</div><div class="meta">' +
+      meta +
+      '</div></td><td class="g">›</td></tr></table></a>'
+    )
+  }
+
+  const dayStart = new Date()
+  dayStart.setHours(0, 0, 0, 0)
+  const dayMs = dayStart.getTime()
+  const recent: ListItem[] = []
+  const older: ListItem[] = []
+  for (const s of sessions) {
+    if ((Number(s.updatedAt) || 0) >= dayMs) recent.push(s)
+    else older.push(s)
+  }
+  const section = (label: string, items: ListItem[]): string =>
+    '<div class="grp">' + label + '</div>' + items.map(rowHtml).join('')
+
   const rows = sessions.length
-    ? sessions
-        .map((s) => {
-          const id = escapeHtml(s.sessionId)
-          const flags = [
-            s.running ? '<span class="flag">● 生成中</span>' : '',
-            s.blank ? '<span class="flag off">● 空会话</span>' : '',
-          ]
-            .filter(Boolean)
-            .join(' ')
-          const meta = [formatWhen(s.updatedAt), flags].filter(Boolean).join(' ')
-          return (
-            '<a class="row" href="/c/' +
-            id +
-            '"><table><tr><td class="t"><div class="ttl">' +
-            escapeHtml(s.title) +
-            '</div><div class="meta">' +
-            meta +
-            '</div></td><td class="g">›</td></tr></table></a>'
-          )
-        })
-        .join('')
+    ? recent.length > 0 && older.length > 0
+      ? section('今天', recent) + section('更早', older)
+      : sessions.map(rowHtml).join('')
     : extras.query
       ? '<div class="empty"><p class="t">没有匹配的会话</p><p class="hint">换个词，或者清掉搜索。</p></div>'
       : '<div class="empty"><p class="t">这里还没有会话</p><p class="hint">点上面的「＋ 新会话」开一个。</p></div>'
