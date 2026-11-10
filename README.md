@@ -28,7 +28,7 @@ DSH 自带的 Web GUI 是 Vite + React 单页应用，在它上面打不开。
 | 峰谷价签 | 标题栏显示现在算「峰时」还是「谷时」：高峰单价是空闲的两倍（工作日 9–12 点、14–18 点） |
 | 思考强度 | 会话页「低 / 高 / 最大」，按当前模型支持的能力显示，切换对下一次请求生效 |
 | AI 提问 | 模型用 `ask_user_question` 提问时，输入框换成选项列表 + 一栏「其他答案」；点「回答」或「跳过」继续 |
-| 阅读端提示词 | 每个 Kindle 会话自动注入一段系统提示词：先给结论、默认 300 字内、不用表格、公式只用 LaTeX |
+| 阅读端提示词 | 每个 Kindle 会话自动注入一段系统提示词：先给结论、默认 300 字内、不用表格、公式只用 LaTeX；模型提问落成选项面板、给文件用相对路径链接 |
 | Markdown 预览 | 会话页「文件」列出当前工作区的 `*.md`（递归三层、按修改时间），点开即读；正文里的链接和裸路径也能继续点下一篇 |
 
 ## 环境
@@ -182,10 +182,10 @@ npm run pack:check
 调试页 `/debug`（需要登录）会输出插件版本、热重载代次、提示词注册状态、余额服务与模型目录的可用性。
 
 ```
-kindle-ui 0.7.0
+kindle-ui 0.7.1
 hot: generation 1 (0 reloads, auto on)
 {"registered":1,"lastError":"","section":"kindle:display"}
-prompt bytes 1066
+prompt bytes 1340
 delete (workspace services): ready
 account (balance): ready
 model catalog: deepseek-official/deepseek-flash (low,high,max)
