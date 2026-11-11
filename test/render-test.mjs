@@ -1,5 +1,5 @@
 import { renderMarkdown } from '../lib/markdown.js'
-import { renderSession, renderList, renderPreview, renderSettings, renderFilesPin } from '../lib/ui.js'
+import { renderSession, renderList, renderPreview, renderSettings, renderFilesPin, renderFiles, renderImage } from '../lib/ui.js'
 import { convertPromptMath, texToSvg } from '../lib/math.js'
 import { VERSION } from '../lib/index.js'
 import { readFileSync } from 'node:fs'
@@ -186,6 +186,48 @@ assert.ok(runningPage.includes('id="typebox">'), 'no ask keeps the composer')
 assert.ok(!runningPage.includes('data-ask="tok'), 'no ask leaves the box empty')
 assert.ok(askPage.includes('applyAsk'), 'tail script swaps the ask card')
 assert.ok(askPage.includes("'等你回答 · AI 暂停中'"), 'tail script repeats the ask state')
+
+// PDF and WebP previews are flattened to JPEG on the host; PDFs page one at a
+// time because rendering a whole book would take forever on an e-ink refresh.
+const pdfMid = renderImage(cfg, {
+  path: '/w/书.pdf',
+  name: '书.pdf',
+  dir: '/w',
+  size: 1000,
+  converted: true,
+  pages: 3,
+  page: 2,
+})
+assert.ok(pdfMid.includes('pg=2'), 'image src asks for the current PDF page')
+assert.ok(pdfMid.includes('第 2 / 3 页'), 'pager shows the page number')
+assert.ok(pdfMid.includes('上一页') && pdfMid.includes('下一页'), 'pager links both ways')
+assert.ok(!pdfMid.includes('原图'), 'converted pages cannot link to the original bytes')
+const pdfFirst = renderImage(cfg, {
+  path: '/w/书.pdf', name: '书.pdf', dir: '/w', size: 1000, converted: true, pages: 3, page: 1,
+})
+assert.ok(!pdfFirst.includes('上一页'), 'first page has no previous link')
+const pdfLast = renderImage(cfg, {
+  path: '/w/书.pdf', name: '书.pdf', dir: '/w', size: 1000, converted: true, pages: 3, page: 3,
+})
+assert.ok(!pdfLast.includes('下一页'), 'last page has no next link')
+const webpPage = renderImage(cfg, {
+  path: '/w/图.webp', name: '图.webp', dir: '/w', size: 900, converted: true,
+})
+assert.ok(!webpPage.includes('class="pager"'), 'a single WebP frame has no pager')
+assert.ok(!webpPage.includes('原图'), 'WebP is served as JPEG, not raw')
+const pngPage = renderImage(cfg, {
+  path: '/w/图.png', name: '图.png', dir: '/w', size: 900,
+})
+assert.ok(pngPage.includes('原图'), 'plain images still link to the original')
+const pdfRow = renderFiles(cfg, {
+  workspace: 'w',
+  dir: '/w',
+  label: '根目录',
+  crumbs: [{ name: 'w', path: '/w' }],
+  entries: [{ path: '/w/书.pdf', name: '书.pdf', relative: '书.pdf', size: 1000, kind: 'pdf' }],
+})
+assert.ok(pdfRow.includes('· PDF'), 'file list marks PDFs')
+assert.ok(pdfRow.includes('/i?p='), 'PDFs are clickable')
 
 // A published package must not disagree with the version it reports at runtime.
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))

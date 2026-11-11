@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { spawnSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -619,6 +620,28 @@ const jumpPage = await req('/f?p=' + encodeURIComponent(longPath) + '&at=' + atI
 console.log('39c table of contents ->', tocPage.status, 'toc', tocPage.text.includes('class="toc"'),
   'entries', tocPage.text.includes('>二<') && tocPage.text.includes('>三<'),
   'jump', jumpPage.text.includes('从「二」开始'), 'starts late', !jumpPage.text.includes('正文一'))
+
+// PDFs and WebP are flattened to JPEG on the host before the Kindle sees them.
+const hasConvert = spawnSync('magick', ['-version']).status === 0 &&
+  spawnSync('pdftoppm', ['-v']).status === 0
+if (hasConvert) {
+  const webpPath = join(cwd, '图.webp')
+  const pdfPath = join(cwd, '样本.pdf')
+  spawnSync('magick', [pngPath, webpPath])
+  spawnSync('magick', [pngPath, '-page', 'A4', pdfPath])
+  const pdfPage = await req('/i?p=' + encodeURIComponent(pdfPath), { headers: { cookie } })
+  const pdfImg = await req('/img?p=' + encodeURIComponent(pdfPath) + '&pg=1', { headers: { cookie } })
+  const webpPage = await req('/i?p=' + encodeURIComponent(webpPath), { headers: { cookie } })
+  const webpImg = await req('/img?p=' + encodeURIComponent(webpPath), { headers: { cookie } })
+  const fileList = await req('/files', { headers: { cookie } })
+  console.log('39d pdf/webp preview ->', 'pdf page', pdfPage.status,
+    'listed', fileList.text.includes('· PDF'),
+    'pdf jpeg', pdfImg.status, pdfImg.headers.get('content-type'), pdfImg.text.length > 500,
+    'webp jpeg', webpImg.status, webpImg.headers.get('content-type'),
+    'no raw link', !webpPage.text.includes('原图'))
+} else {
+  console.log('39d pdf/webp preview -> skipped (no pdftoppm/magick)')
+}
 
 const denied = await req('/f?p=' + encodeURIComponent('/etc/hosts'), { headers: { cookie } })
 const notMarkdown = await req('/f?p=' + encodeURIComponent(textPath), { headers: { cookie } })

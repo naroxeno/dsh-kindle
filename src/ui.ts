@@ -90,7 +90,7 @@ export interface AskView {
   questions: UserQuestion[]
 }
 
-export type FileKind = 'md' | 'text' | 'image' | 'other'
+export type FileKind = 'md' | 'text' | 'image' | 'pdf' | 'other'
 
 export interface FileRow {
   path: string
@@ -150,6 +150,9 @@ export interface ImageView {
   size: number
   updatedAt?: number
   from?: string
+  converted?: boolean
+  pages?: number
+  page?: number
 }
 
 export interface ToolsView {
@@ -315,6 +318,9 @@ body.indart .msg .body p{text-indent:2em}
 .fig img{max-width:100%;height:auto;border:1px solid #000}
 .shot{margin:16px 0;text-align:center}
 .shot img{max-width:100%;height:auto}
+.pager{padding:18px 24px;border-top:2px solid #ddd;font-size:0.9em;text-align:center}
+.pager a{display:inline-block;padding:16px 10px;text-decoration:underline}
+.pager span{display:inline-block;margin:0 10px}
 .msg .body h2,.msg .body h3,.msg .body h4{font-size:1.04em;line-height:1.4;margin:28px 0 12px}
 .msg .body ul,.msg .body ol{margin:16px 0;padding-left:40px}
 .msg .body li{margin:8px 0}
@@ -1197,7 +1203,7 @@ export function renderFiles(config: KindleConfig, view: FilesView): string {
         escapeHtml(entry.name) +
         '</div><p class="meta">' +
         meta +
-        (entry.kind === 'other' ? ' · 不能预览' : '') +
+        (entry.kind === 'other' ? ' · 不能预览' : entry.kind === 'pdf' ? ' · PDF' : '') +
         '</p></td><td class="g">' +
         (entry.dir || entry.kind !== 'other' ? '›' : '') +
         '</td></tr></table>'
@@ -1298,16 +1304,36 @@ ${where}${toc}
 /** One image, fitted to the screen width. e-ink is happiest with a plain <img>. */
 export function renderImage(config: KindleConfig, view: ImageView): string {
   const back = view.from || '/files'
-  const src = '/img?p=' + encodeURIComponent(view.path)
+  const page = view.page || 1
+  const pages = view.pages || 1
+  const from = view.from ? '&from=' + encodeURIComponent(view.from) : ''
+  const pageHref = (n: number) => '/i?p=' + encodeURIComponent(view.path) + '&pg=' + n + from
+  const src = '/img?p=' + encodeURIComponent(view.path) + (pages > 1 ? '&pg=' + page : '')
   const sub =
     view.dir +
     ' · ' +
     formatSize(view.size) +
     (view.updatedAt ? ' · ' + formatTime(view.updatedAt) : '')
+  const pager =
+    pages > 1
+      ? '<div class="pager">' +
+        (page > 1 ? `<a href="${escapeHtml(pageHref(page - 1))}">‹ 上一页</a>` : '<span></span>') +
+        `<span>第 ${page} / ${pages} 页</span>` +
+        (page < pages
+          ? `<a href="${escapeHtml(pageHref(page + 1))}">下一页 ›</a>`
+          : '<span></span>') +
+        '</div>'
+      : ''
+  const right = view.converted
+    ? page < pages
+      ? `<a href="${escapeHtml(pageHref(page + 1))}">下一页 ›</a>`
+      : ''
+    : `<a href="${escapeHtml(src)}">原图</a>`
   const body = `
-${toolBar(`<a href="${escapeHtml(back)}">‹ 返回</a>`, `<a href="${escapeHtml(src)}">原图</a>`)}
+${toolBar(`<a href="${escapeHtml(back)}">‹ 返回</a>`, right)}
 ${pageHead(view.name, sub)}
 <div class="shot"><img src="${escapeHtml(src)}" alt="${escapeHtml(view.name)}"></div>
+${pager}
 `
   return shell(view.name, body, { fontSize: config.fontSize, bodyClass: 'hei' })
 }

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.0 — 2026-11-12
+
+文件页可以预览 PDF 与 WebP：Host 先转成 JPEG 再发给 Kindle。
+
+- PDF 用 `pdftoppm` 逐页渲染（758px 宽、质量 85），页面下加「上一页 / 下一页」，只转当前页。
+- WebP 用 ImageMagick 的 `magick` 取第一帧转 JPEG；转换结果按（路径、mtime、大小、页码）缓存，7 天清理。
+- 缺少 `pdftoppm` / `magick` 时返回 503，说明缺哪个工具，不会把原始 PDF 丢给 Kindle。
+- 转换失败或超限（PDF 64 MB）走正常错误页。
+
 ## 0.7.1 — 2026-11-11
 
 阅读端系统提示词补齐 0.6/0.7 新增的界面能力。

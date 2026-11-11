@@ -1,8 +1,9 @@
+import { execFile } from 'node:child_process'
 import { createHash, createHmac, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto'
 import { createReadStream, readFileSync, statSync } from 'node:fs'
-import { mkdir, open, readFile, readdir, stat, writeFile } from 'node:fs/promises'
+import { mkdir, open, readFile, readdir, rename, stat, unlink, writeFile } from 'node:fs/promises'
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { homedir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import type { Generation } from './generation.js'
 import type {
@@ -27,6 +28,8 @@ const VERSION: string = JSON.parse(
 const LIST_MAX = 60
 const FILE_PAGE_SIZE = 60
 const MARKDOWN_MAX_BYTES = 1024 * 1024
+const PDF_MAX_BYTES = 64 * 1024 * 1024
+const JPEG_WIDTH = 758
 /** How recently a Kindle page must have polled before it may take a question. */
 const ASK_CLAIM_MS = 45_000
 
@@ -543,7 +546,7 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
     }
 
     if (method === 'GET' && path === '/img') {
-      serveLocalImage([activeCwd(), config.cwd, process.cwd()], req, res, url)
+      await serveLocalImage([activeCwd(), config.cwd, process.cwd()], req, res, url)
       return
     }
 
@@ -666,7 +669,9 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
       if (!readRoots().some((root) => isInside(file, root))) {
         throw new HttpError(403, '这个图片不在可读目录里。')
       }
-      if (!IMAGE_MIME[extname(file).toLowerCase()]) throw new HttpError(404, '不是图片。')
+      const ext = extname(file).toLowerCase()
+      const converted = ext === '.pdf' || ext === '.webp'
+      if (!IMAGE_MIME[ext] && !converted) throw new HttpError(404, '不是图片。')
       let info
       try {
         info = statSync(file)
@@ -674,7 +679,12 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
         throw new HttpError(404, '图片不存在。')
       }
       if (!info.isFile()) throw new HttpError(404, '图片不存在。')
-      if (info.size > IMAGE_MAX_BYTES) throw new HttpError(413, '图片太大。')
+      if (info.size > (ext === '.pdf' ? PDF_MAX_BYTES : IMAGE_MAX_BYTES)) {
+        throw new HttpError(413, '图片太大。')
+      }
+      const pages = ext === '.pdf' ? await pdfPageCount(file, info) : 1
+      const page = previewPage(url.searchParams.get('pg'), pages)
+      if (converted) await convertedJpeg(file, page, info)
       const from = safeFrom(url.searchParams.get('from'))
       sendHtml(
         res,
@@ -686,6 +696,8 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
           size: info.size,
           updatedAt: info.mtimeMs,
           ...(from ? { from } : {}),
+          ...(converted ? { converted: true } : {}),
+          ...(pages > 1 ? { pages, page } : {}),
         }),
       )
       return
@@ -1223,6 +1235,7 @@ export async function createApp(host: KindleHost): Promise<KindleApp> {
     if (ext === '.md' || ext === '.markdown') return 'md'
     if (TEXT_EXTS.has(ext)) return 'text'
     if (IMAGE_MIME[ext]) return 'image'
+    if (ext === '.pdf') return 'pdf'
     // LICENSE, Makefile and friends have no extension, and a wrong
     // extension is common too, so fall back to sniffing the first block.
     if (BINARY_EXTS.has(ext)) return 'other'
@@ -1333,42 +1346,206 @@ const IMAGE_MIME: Record<string, string> = {
 
 const IMAGE_MAX_BYTES = 12 * 1024 * 1024
 
+function previewPage(raw: string | null, pages: number): number {
+  const asked = Number(raw)
+  const total = Math.max(1, pages || 1)
+  return Math.min(total, Math.max(1, Number.isInteger(asked) && asked > 0 ? asked : 1))
+}
+
+const PDF_PAGES_KEY = Symbol.for('dsh-kindle.pdf-pages')
+const CONVERTED_DIR = join(tmpdir(), 'kindle-preview')
+
+interface PdfPageCache {
+  key: string
+  pages: number
+}
+
+async function pdfPageCount(
+  file: string,
+  info: { mtimeMs: number; size: number },
+): Promise<number> {
+  const shared = globalThis as unknown as { [key: symbol]: Map<string, PdfPageCache> | undefined }
+  const cache = (shared[PDF_PAGES_KEY] ||= new Map<string, PdfPageCache>())
+  const key = Math.floor(info.mtimeMs) + ':' + info.size
+  const hit = cache.get(file)
+  if (hit && hit.key === key) return hit.pages
+  const out = await runCapture('pdfinfo', [file], 15000)
+  const match = /^Pages:\s+(\d+)/m.exec(out)
+  const pages = match ? Number(match[1]) : 0
+  cache.set(file, { key, pages })
+  return pages
+}
+
+function runCapture(tool: string, args: string[], timeout: number): Promise<string> {
+  return new Promise((resolveRun, rejectRun) => {
+    execFile(tool, args, { timeout, maxBuffer: 2 * 1024 * 1024 }, (error, stdout) => {
+      if (error) return rejectRun(toolError(tool, error))
+      resolveRun(String(stdout))
+    })
+  })
+}
+
+function toolError(tool: string, error: unknown): HttpError {
+  if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+    return new HttpError(503, '这台机器上没有 ' + tool + '，没法转换预览。')
+  }
+  const message = String((error as { message?: unknown } | null)?.message || error)
+    .split('\n')[0]
+    .slice(0, 120)
+  return new HttpError(500, '转换失败：' + message)
+}
+
+async function convertedJpeg(
+  file: string,
+  page: number,
+  info: { mtimeMs: number; size: number },
+): Promise<string> {
+  const key = createHash('sha1')
+    .update(file)
+    .update('\0')
+    .update(String(Math.floor(info.mtimeMs)))
+    .update('\0')
+    .update(String(info.size))
+    .update('\0')
+    .update('p' + page)
+    .digest('hex')
+  const target = join(CONVERTED_DIR, key + '.jpg')
+  try {
+    const done = await stat(target)
+    if (done.size > 0) return target
+  } catch (error) {}
+  await mkdir(CONVERTED_DIR, { recursive: true })
+  pruneConverted(Date.now())
+  const tmp = target + '.' + process.pid + '-' + randomBytes(4).toString('hex') + '.tmp'
+  if (extname(file).toLowerCase() === '.pdf') {
+    const produced = tmp + '.jpg'
+    await runCapture(
+      'pdftoppm',
+      [
+        '-f',
+        String(page),
+        '-l',
+        String(page),
+        '-scale-to-x',
+        String(JPEG_WIDTH),
+        '-scale-to-y',
+        '-1',
+        '-jpeg',
+        '-jpegopt',
+        'quality=85',
+        '-singlefile',
+        file,
+        tmp,
+      ],
+      30000,
+    )
+    await rename(produced, target)
+  } else {
+    await runCapture(
+      'magick',
+      [
+        file + '[0]',
+        '-auto-orient',
+        '-resize',
+        JPEG_WIDTH + 'x1024>',
+        '-quality',
+        '85',
+        'jpg:' + tmp,
+      ],
+      20000,
+    )
+    await rename(tmp, target)
+  }
+  return target
+}
+
+let lastPrune = 0
+
+function pruneConverted(now: number): void {
+  if (now - lastPrune < 3600_000) return
+  lastPrune = now
+  void (async () => {
+    try {
+      const names = await readdir(CONVERTED_DIR)
+      const cutoff = now - 7 * 24 * 3600_000
+      const tmpCutoff = now - 24 * 3600_000
+      for (const name of names) {
+        const path = join(CONVERTED_DIR, name)
+        const stale = name.endsWith('.tmp') || name.endsWith('.tmp.jpg') ? tmpCutoff : cutoff
+        try {
+          const item = await stat(path)
+          if (item.mtimeMs < stale) await unlink(path)
+        } catch (error) {}
+      }
+    } catch (error) {}
+  })()
+}
+
 /**
  * Serves a local image file for `<img src="/img?p=…">`.
  *
  * The image stays in the browser's HTTP cache instead of being re-sent inside
  * every page render, which matters on e-ink: a full refresh re-renders the
  * whole document, and inline SVG sometimes comes back blank on the device.
+ * PDFs and WebP cannot be decoded by the Kindle browser, so they are flattened
+ * to JPEG on the host first.
  */
-function serveLocalImage(
+async function serveLocalImage(
   roots: string[],
   req: IncomingMessage,
   res: ServerResponse,
   url: URL,
-): void {
+): Promise<void> {
   const raw = url.searchParams.get('p') || ''
   if (!raw) throw new HttpError(404, '没有指定图片。')
-  const file = isAbsolute(raw) ? raw : resolve(roots[0] || process.cwd(), raw)
-  const mime = IMAGE_MIME[extname(file).toLowerCase()]
-  if (!mime) throw new HttpError(404, '不是图片。')
-  const inside = roots.some((root) => file === root || file.startsWith(root + sep))
+  const wanted = expandHome(raw)
+  const file = isAbsolute(wanted) ? wanted : resolve(roots[0] || process.cwd(), wanted)
+  const ext = extname(file).toLowerCase()
+  const converted = ext === '.pdf' || ext === '.webp'
+  const mime = IMAGE_MIME[ext]
+  if (!mime && !converted) throw new HttpError(404, '不是图片。')
+  const inside = roots.some((root) => isInside(file, root))
   if (!inside) throw new HttpError(403, '图片不在工作目录里。')
 
-  let stat
+  let info
   try {
-    stat = statSync(file)
+    info = statSync(file)
   } catch {
     throw new HttpError(404, '图片不存在。')
   }
-  if (!stat.isFile()) throw new HttpError(404, '图片不存在。')
-  if (stat.size > IMAGE_MAX_BYTES) throw new HttpError(413, '图片太大。')
+  if (!info.isFile()) throw new HttpError(404, '图片不存在。')
+  if (info.size > (ext === '.pdf' ? PDF_MAX_BYTES : IMAGE_MAX_BYTES)) {
+    throw new HttpError(413, '图片太大。')
+  }
 
-  const etag = '"' + stat.size.toString(16) + '-' + Math.floor(stat.mtimeMs).toString(16) + '"'
+  if (converted) {
+    const pages = ext === '.pdf' ? await pdfPageCount(file, info) : 1
+    const page = previewPage(url.searchParams.get('pg'), pages)
+    const target = await convertedJpeg(file, page, info)
+    const done = statSync(target)
+    const etag = '"c-' + done.size.toString(16) + '-' + Math.floor(done.mtimeMs).toString(16) + '"'
+    const headers: Record<string, string> = {
+      'content-type': 'image/jpeg',
+      'cache-control': 'public, max-age=604800',
+      etag,
+      'content-length': String(done.size),
+    }
+    if (req.headers['if-none-match'] === etag) {
+      res.writeHead(304, headers)
+      res.end()
+      return
+    }
+    res.writeHead(200, headers)
+    createReadStream(target).pipe(res)
+    return
+  }
+
+  const etag = '"' + info.size.toString(16) + '-' + Math.floor(info.mtimeMs).toString(16) + '"'
   const headers: Record<string, string> = {
     'content-type': mime,
     'cache-control': 'public, max-age=604800',
     etag,
-    'content-length': String(stat.size),
+    'content-length': String(info.size),
   }
   if (req.headers['if-none-match'] === etag) {
     res.writeHead(304, headers)

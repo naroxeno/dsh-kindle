@@ -30,12 +30,14 @@ DSH 自带的 Web GUI 是 Vite + React 单页应用，在它上面打不开。
 | AI 提问 | 模型用 `ask_user_question` 提问时，输入框换成选项列表 + 一栏「其他答案」；点「回答」或「跳过」继续 |
 | 阅读端提示词 | 每个 Kindle 会话自动注入一段系统提示词：先给结论、默认 300 字内、不用表格、公式只用 LaTeX；模型提问落成选项面板、给文件用相对路径链接 |
 | Markdown 预览 | 会话页「文件」列出当前工作区的 `*.md`（递归三层、按修改时间），点开即读；正文里的链接和裸路径也能继续点下一篇 |
+| PDF / WebP 预览 | 工作区里的 PDF、WebP 由 Host 转成 JPEG 再发给 Kindle；PDF 可逐页翻（`pdftoppm` 取页、`magick` 转 WebP，缺工具时页面会说明） |
 
 ## 环境
 
 - dsh `>= 0.2.1-rc.1 < 0.3.0`（0.2.1-rc.2、0.2.2-alpha.2 实测）
 - Node.js `>= 20`
 - 浏览器：Kindle Paperwhite（实测 KPW4 / 固件 5.14.2）；其他 WebKit 534 级别的老浏览器大概率也能用
+- 预览 PDF/WebP 需要 `pdftoppm`（poppler）和 ImageMagick 的 `magick`；没有时页面会说明缺哪个工具
 - 设备与 Host 在同一局域网，或你自建了内网穿透
 
 首次安装会下载约 45 MB 依赖（`mathjax-full`），之后不联网。
@@ -162,7 +164,7 @@ Kindle 新建的会话会挂在「默认工作区」这个分组里，不再出�
 
 - 不是流式：生成中每 3 秒轮询一次增量片段，空闲降到 15 秒、25 轮后停。所以看到的是
   "一段一段"的长出来，不是逐字。
-- 不支持图片：模型回复里的图片不会显示（WebKit 534 上图片解码也不划算）。
+- 不支持聊天内的图片：模型回复里的图片不会显示（WebKit 534 上大图解码不划算）；文件页的图片、PDF、WebP 预览是支持的。
 - Markdown 是精简实现：段落、标题、列表、引用、代码块、表格、链接、粗斜体；
   没有脚注、任务列表、HTML 透传。
 - 会话页一次渲染 `pageSize` 条，很长的会话需要翻页。
@@ -182,7 +184,7 @@ npm run pack:check
 调试页 `/debug`（需要登录）会输出插件版本、热重载代次、提示词注册状态、余额服务与模型目录的可用性。
 
 ```
-kindle-ui 0.7.1
+kindle-ui 0.8.0
 hot: generation 1 (0 reloads, auto on)
 {"registered":1,"lastError":"","section":"kindle:display"}
 prompt bytes 1340
